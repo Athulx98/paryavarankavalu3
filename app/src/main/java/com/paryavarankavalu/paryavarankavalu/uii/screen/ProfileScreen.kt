@@ -40,6 +40,8 @@ fun ProfileScreen(navController: NavController, viewModel: MainViewModel = viewM
         reports.filter { it.reporterId == (userProfile?.uid ?: "") }
     }
 
+    val leaderboard by viewModel.leaderboard.collectAsState()
+
     val levelInfo = getLevelInfo(userProfile?.ecoKarma ?: 0)
 
     Column(
@@ -225,6 +227,60 @@ fun ProfileScreen(navController: NavController, viewModel: MainViewModel = viewM
                             }
                         }
                     )
+                }
+            }
+
+            item {
+                Text(
+                    text = "Top Contributors",
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Black,
+                    color = Forest900,
+                    modifier = Modifier.padding(top = 32.dp, bottom = 16.dp)
+                )
+            }
+
+            items(leaderboard.take(5)) { user ->
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp),
+                    color = SurfaceContainerLowest,
+                    shape = RoundedCornerShape(16.dp),
+                    shadowElevation = 1.dp
+                ) {
+                    Row(
+                        modifier = Modifier.padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        val rank = leaderboard.indexOf(user) + 1
+                        Text(
+                            text = "#$rank",
+                            fontWeight = FontWeight.Black,
+                            fontSize = 14.sp,
+                            color = if (rank <= 3) GreenPrimary else OnSurfaceVariant,
+                            modifier = Modifier.width(32.dp)
+                        )
+                        Box(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .background(SurfaceContainerLow, CircleShape),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                user.displayName.firstOrNull()?.toString() ?: "U",
+                                fontWeight = FontWeight.Bold,
+                                color = OnBackground,
+                                fontSize = 14.sp
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(user.displayName, fontWeight = FontWeight.Bold,
+                                color = OnBackground, fontSize = 13.sp)
+                            Text("${user.ecoKarma} karma", fontSize = 11.sp, color = OnSurfaceVariant)
+                        }
+                    }
                 }
             }
 

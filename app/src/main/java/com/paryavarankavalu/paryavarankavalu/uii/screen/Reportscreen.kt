@@ -54,6 +54,7 @@ import com.paryavarankavalu.paryavarankavalu.model.Report
 import com.paryavarankavalu.paryavarankavalu.service.AiService
 import com.paryavarankavalu.paryavarankavalu.ui.theme.*
 import com.paryavarankavalu.paryavarankavalu.viewmodel.MainViewModel
+import com.paryavarankavalu.paryavarankavalu.BuildConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -80,7 +81,7 @@ fun ReportScreen(
     var detectedRegion by remember { mutableStateOf("Unknown Area") }
 
     val isCleanupMode = reportId != null
-    val aiService = remember { AiService("AIzaSyBop8o86YJMYqOC3owzdgvw0Fkc_5YNJgU") }
+    val aiService = remember { AiService(BuildConfig.GEMINI_API_KEY) }
     val fusedLocationClient = remember { LocationServices.getFusedLocationProviderClient(context) }
 
     val galleryLauncher = rememberLauncherForActivityResult(

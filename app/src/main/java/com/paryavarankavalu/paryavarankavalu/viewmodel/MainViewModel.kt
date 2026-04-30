@@ -13,11 +13,10 @@ import com.paryavarankavalu.paryavarankavalu.model.Report
 import com.paryavarankavalu.paryavarankavalu.model.UserProfile
 import com.paryavarankavalu.paryavarankavalu.repository.AppRepository
 import com.paryavarankavalu.paryavarankavalu.service.LocationUtils
+import com.paryavarankavalu.paryavarankavalu.service.Zone
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
-import com.paryavarankavalu.paryavarankavalu.uii.screen.Zone
-import com.paryavarankavalu.paryavarankavalu.uii.screen.getNearestZone
 
 class MainViewModel : ViewModel() {
     private val repository = AppRepository()
@@ -87,7 +86,7 @@ class MainViewModel : ViewModel() {
                         val newLatLng = LatLng(it.latitude, it.longitude)
                         _userLocation.value = newLatLng
                         
-                        val nearest = getNearestZone(it.latitude, it.longitude)
+                        val nearest = LocationUtils.getNearestZone(it.latitude, it.longitude)
                         _nearestZone.value = nearest
                         
                         if (_activeRegion.value == "All India") {
@@ -99,7 +98,7 @@ class MainViewModel : ViewModel() {
                         fusedLocationClient?.lastLocation?.addOnSuccessListener { loc ->
                             loc?.let {
                                 _userLocation.value = LatLng(it.latitude, it.longitude)
-                                val nearest = getNearestZone(it.latitude, it.longitude)
+                                val nearest = LocationUtils.getNearestZone(it.latitude, it.longitude)
                                 _nearestZone.value = nearest
                             }
                         }
@@ -137,7 +136,7 @@ class MainViewModel : ViewModel() {
                 ?.addOnSuccessListener { location ->
                     location?.let {
                         _userLocation.value = LatLng(it.latitude, it.longitude)
-                        _nearestZone.value = getNearestZone(it.latitude, it.longitude)
+                        _nearestZone.value = LocationUtils.getNearestZone(it.latitude, it.longitude)
                     }
                 }
         } catch (unlikely: SecurityException) {
