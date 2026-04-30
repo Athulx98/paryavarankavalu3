@@ -9,20 +9,25 @@ import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.math.sqrt
+import kotlin.coroutines.resume
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.suspendCancellableCoroutine
 
 object LocationHelper {
-    fun getAddressFromLatLng(context: Context, lat: Double, lng: Double): String {
-        return try {
+    suspend fun getAddressFromLatLng(context: Context, lat: Double, lng: Double): String = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        try {
             val geocoder = Geocoder(context, Locale.getDefault())
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                var result = "Fetching address..."
-                geocoder.getFromLocation(lat, lng, 1) { addresses ->
-                    result = addresses.firstOrNull()?.let {
-                        listOfNotNull(it.thoroughfare, it.subLocality, it.locality)
-                            .joinToString(", ")
-                    } ?: "Lat: ${"%.4f".format(lat)}, Lng: ${"%.4f".format(lng)}"
+                kotlinx.coroutines.suspendCancellableCoroutine { continuation ->
+                    geocoder.getFromLocation(lat, lng, 1) { addresses ->
+                        val res = addresses.firstOrNull()?.let {
+                            listOfNotNull(it.thoroughfare, it.subLocality, it.locality)
+                                .joinToString(", ")
+                        } ?: "Lat: ${"%.4f".format(lat)}, Lng: ${"%.4f".format(lng)}"
+                        continuation.resume(res)
+                    }
                 }
-                result
             } else {
                 @Suppress("DEPRECATION")
                 val addresses = geocoder.getFromLocation(lat, lng, 1)

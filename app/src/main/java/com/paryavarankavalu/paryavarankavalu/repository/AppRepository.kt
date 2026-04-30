@@ -17,7 +17,11 @@ import java.util.concurrent.TimeUnit
 class AppRepository {
     private val databaseId = "ai-studio-53d8912c-025e-436b-963e-d638bad473c7"
     
-    private val firestore = FirebaseFirestore.getInstance(databaseId)
+    private val firestore = try {
+        FirebaseFirestore.getInstance(databaseId)
+    } catch (e: Exception) {
+        FirebaseFirestore.getInstance()
+    }
     private val auth = FirebaseAuth.getInstance()
     
     private val storage = FirebaseStorage.getInstance()

@@ -13,7 +13,8 @@ data class Report(
     val cleanedPhotoUrl: String? = null,
     val timestamp: Long = System.currentTimeMillis(),
     val region: String = "",
-    val likes: List<String> = emptyList()
+    val likes: List<String> = emptyList(),
+    val priority: String = "Low"
 )
 
 data class UserProfile(

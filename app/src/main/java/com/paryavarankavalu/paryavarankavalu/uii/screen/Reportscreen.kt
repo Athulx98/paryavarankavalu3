@@ -58,6 +58,8 @@ import com.paryavarankavalu.paryavarankavalu.BuildConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import android.os.Build
+import kotlin.coroutines.resume
 import java.nio.ByteBuffer
 import java.util.*
 
@@ -76,6 +78,7 @@ fun ReportScreen(
     var step by remember { mutableIntStateOf(1) }
     var capturedBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var wasteType by remember { mutableStateOf(if (reportId == null) "Analyzing..." else "Verifying Cleanup...") }
+    var priority by remember { mutableStateOf("Low") }
     var isUploading by remember { mutableStateOf(false) }
     var userLocation by remember { mutableStateOf<Pair<Double, Double>?>(null) }
     var detectedRegion by remember { mutableStateOf("Unknown Area") }
@@ -91,7 +94,10 @@ fun ReportScreen(
             val bitmap = uriToBitmap(context, it)
             capturedBitmap = bitmap
             step = 2
-            analyzeImage(aiService, bitmap, { wasteType = it }, scope, isCleanupMode)
+            analyzeImage(aiService, bitmap, { 
+                wasteType = it 
+                priority = aiService.determinePriority(it)
+            }, scope, isCleanupMode)
         }
     }
 
@@ -146,7 +152,10 @@ fun ReportScreen(
                     onPhotoCaptured = { bitmap ->
                         capturedBitmap = bitmap
                         step = 2
-                        analyzeImage(aiService, bitmap, { wasteType = it }, scope, isCleanupMode)
+                        analyzeImage(aiService, bitmap, { 
+                            wasteType = it 
+                            priority = aiService.determinePriority(it)
+                        }, scope, isCleanupMode)
                     },
                     onGalleryClick = { galleryLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
                     permissionGranted = cameraPermissionState.status.isGranted,
@@ -159,8 +168,11 @@ fun ReportScreen(
                     locationReady = userLocation != null,
                     regionName = detectedRegion,
                     isCleanupMode = isCleanupMode,
-                    onRetake = { step = 1; isUploading = false; wasteType = if (isCleanupMode) "Verifying Cleanup..." else "Analyzing..." },
-                    onCategoryChange = { newType -> wasteType = newType },
+                    onRetake = { step = 1; isUploading = false; wasteType = if (isCleanupMode) "Verifying Cleanup..." else "Analyzing..."; priority = "Low" },
+                    onCategoryChange = { newType -> 
+                        wasteType = newType 
+                        priority = aiService.determinePriority(newType)
+                    },
                     onSubmit = {
                         isUploading = true
                         scope.launch {
@@ -173,6 +185,7 @@ fun ReportScreen(
                                         id = UUID.randomUUID().toString(),
                                         photoUrl = url,
                                         wasteType = wasteType,
+                                        priority = priority,
                                         latitude = userLocation?.first ?: 0.0,
                                         longitude = userLocation?.second ?: 0.0,
                                         region = detectedRegion,
@@ -507,8 +520,20 @@ private fun ImageProxy.toBitmap(): Bitmap {
 private suspend fun getAreaName(context: Context, lat: Double, lon: Double): String {
     return kotlinx.coroutines.withContext(Dispatchers.IO) {
         try {
-            kotlinx.coroutines.withTimeoutOrNull(5000L) {
-                val geocoder = Geocoder(context, Locale.getDefault())
+            val geocoder = Geocoder(context, Locale.getDefault())
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                kotlinx.coroutines.suspendCancellableCoroutine { continuation ->
+                    geocoder.getFromLocation(lat, lon, 1) { addresses ->
+                        val res = if (!addresses.isNullOrEmpty()) {
+                            val address = addresses[0]
+                            address.subLocality ?: address.locality ?: "Unknown Area"
+                        } else {
+                            "Unknown Area"
+                        }
+                        continuation.resume(res)
+                    }
+                }
+            } else {
                 @Suppress("DEPRECATION")
                 val addresses = geocoder.getFromLocation(lat, lon, 1)
                 if (!addresses.isNullOrEmpty()) {
@@ -517,7 +542,7 @@ private suspend fun getAreaName(context: Context, lat: Double, lon: Double): Str
                 } else {
                     "Unknown Area"
                 }
-            } ?: "Unknown Area"
+            }
         } catch (e: Exception) {
             "Unknown Area"
         }

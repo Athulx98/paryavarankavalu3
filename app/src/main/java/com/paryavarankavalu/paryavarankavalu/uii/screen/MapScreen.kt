@@ -227,6 +227,8 @@ fun MapScreen(
             ),
             onMapLoaded = { isMapLoaded = true }
         ) {
+            val exclamationMarker = remember(context) { createExclamationMarker(context) }
+            
             filteredReports.forEach { report ->
                 val markerColor = when(report.status) {
                     "Reported" -> BitmapDescriptorFactory.HUE_RED
@@ -234,16 +236,31 @@ fun MapScreen(
                     "Cleaned"  -> BitmapDescriptorFactory.HUE_GREEN
                     else       -> BitmapDescriptorFactory.HUE_AZURE
                 }
+                val markerIcon = if (report.priority == "High") {
+                    exclamationMarker
+                } else {
+                    BitmapDescriptorFactory.defaultMarker(markerColor)
+                }
                 Marker(
                     state = MarkerState(LatLng(report.latitude, report.longitude)),
-                    icon = BitmapDescriptorFactory.defaultMarker(markerColor),
-                    title = report.wasteType,
-                    snippet = "Status: ${report.status}",
+                    icon = markerIcon,
+                    title = report.wasteType.takeIf { it.isNotBlank() } ?: "No Data Available",
+                    snippet = "Status: ${report.status} | Priority: ${report.priority}",
                     onClick = { 
                         selectedReport = report
                         true 
                     }
                 )
+
+                if (report.priority == "High" && report.status != "Cleaned") {
+                    Circle(
+                        center = LatLng(report.latitude, report.longitude),
+                        radius = 40.0,
+                        fillColor = Color(0x33FF0000),
+                        strokeColor = Color.Red,
+                        strokeWidth = 3f
+                    )
+                }
             }
 
             userLocation?.let {
@@ -438,13 +455,18 @@ fun MapScreen(
             }
         }
 
-        // Report Detail Bottom Sheet
-        if (selectedReport != null) {
-            ModalBottomSheet(
-                onDismissRequest = { selectedReport = null }
-            ) {
-                ReportDetailBottomSheet(
-                    report = selectedReport!!,
+        // State-Driven Detail Card matching the image design
+        androidx.compose.animation.AnimatedVisibility(
+            visible = selectedReport != null,
+            enter = androidx.compose.animation.slideInVertically(initialOffsetY = { it }) + androidx.compose.animation.fadeIn(),
+            exit = androidx.compose.animation.slideOutVertically(targetOffsetY = { it }) + androidx.compose.animation.fadeOut(),
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 80.dp) // Leave space for bottom bar sync
+        ) {
+            selectedReport?.let { report ->
+                ReportDetailFloatingCard(
+                    report = report,
                     userLocation = userLocation,
                     role = userProfile?.role ?: "Citizen",
                     uid = auth.currentUser?.uid ?: "",
@@ -455,13 +477,13 @@ fun MapScreen(
                         try {
                             context.startActivity(mapIntent)
                         } catch (e: Exception) {
-                            // Fallback to generic map view
                             val fallbackUri = Uri.parse("geo:$lat,$lng?q=$lat,$lng")
                             context.startActivity(Intent(Intent.ACTION_VIEW, fallbackUri))
                         }
                     },
                     onTakeCharge = { id -> viewModel.bookCleanup(id) },
-                    onCompleteCleanup = { id, url -> scope.launch { viewModel.completeCleanup(id, url) } }
+                    onCompleteCleanup = { id, url -> scope.launch { viewModel.completeCleanup(id, url) } },
+                    onClose = { selectedReport = null }
                 )
             }
         }
@@ -495,14 +517,15 @@ fun MapScreen(
 }
 
 @Composable
-fun ReportDetailBottomSheet(
+fun ReportDetailFloatingCard(
     report: Report,
     userLocation: LatLng?,
     role: String,
     uid: String,
     onNavigate: (Double, Double) -> Unit,
     onTakeCharge: (String) -> Unit,
-    onCompleteCleanup: (String, String) -> Unit
+    onCompleteCleanup: (String, String) -> Unit,
+    onClose: () -> Unit
 ) {
     val context = LocalContext.current
     var address by remember { mutableStateOf("Fetching address...") }
@@ -538,164 +561,167 @@ fun ReportDetailBottomSheet(
         address = LocationHelper.getAddressFromLatLng(context, report.latitude, report.longitude)
     }
 
-    val distance = if (userLocation != null) {
-        val distKm = LocationUtils.getDistanceInKm(userLocation.latitude, userLocation.longitude, report.latitude, report.longitude)
-        "${LocationHelper.formatDistance(distKm)} away (${LocationHelper.estimateWalkingTime(distKm)})"
-    } else {
-        "Distance unknown"
-    }
+    val titleText = report.wasteType.takeIf { it.isNotBlank() } ?: "No Data Available"
+    val rawUrl = (if (report.status == "Cleaned") report.cleanedPhotoUrl else report.photoUrl)?.takeIf { it.isNotBlank() } ?: ""
 
-    Column(modifier = Modifier.padding(horizontal = 20.dp).padding(bottom = 32.dp)) {
-        // Stitch: 24dp rounded image container
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(220.dp)
-                .clip(RoundedCornerShape(24.dp))
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 16.dp)
+    ) {
+        Card(
+            modifier = Modifier.fillMaxWidth().padding(end = if (report.status == "Assigned" && report.cleanerId == uid) 16.dp else 0.dp),
+            shape = RoundedCornerShape(24.dp),
+            colors = CardDefaults.cardColors(containerColor = Color.White),
+            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
         ) {
-            val rawUrl = (if (report.status == "Cleaned") report.cleanedPhotoUrl else report.photoUrl) ?: ""
-            var imgModel by remember(rawUrl) { mutableStateOf<Any?>(null) }
-            LaunchedEffect(rawUrl) {
-                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                    imgModel = if (rawUrl.startsWith("data:image")) {
-                        android.util.Base64.decode(rawUrl.substringAfter("base64,"), android.util.Base64.DEFAULT)
-                    } else rawUrl
+            Column {
+                // Image Header
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(160.dp)
+                        .clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
+                        .background(Color.LightGray)
+                ) {
+                    if (rawUrl.isNotBlank()) {
+                        var imgModel by remember(rawUrl) { mutableStateOf<Any?>(null) }
+                        LaunchedEffect(rawUrl) {
+                            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                imgModel = if (rawUrl.startsWith("data:image")) {
+                                    android.util.Base64.decode(rawUrl.substringAfter("base64,"), android.util.Base64.DEFAULT)
+                                } else rawUrl
+                            }
+                        }
+                        AsyncImage(
+                            model = imgModel,
+                            contentDescription = "Report image",
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    } else {
+                        // Fallback placeholder
+                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Icon(Icons.Default.ImageNotSupported, contentDescription = "No Image", tint = Color.Gray, modifier = Modifier.size(48.dp))
+                        }
+                    }
+                    
+                    // Close button overlay
+                    IconButton(
+                        onClick = onClose,
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(8.dp)
+                            .background(Color.Black.copy(alpha = 0.5f), CircleShape)
+                            .size(32.dp)
+                    ) {
+                        Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White, modifier = Modifier.size(16.dp))
+                    }
+
+                    // Tags matching the design
+                    Row(
+                        modifier = Modifier
+                            .align(Alignment.TopStart)
+                            .padding(12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Surface(
+                            color = Color(0xFFB3261E), // Red
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Text(
+                                text = titleText.uppercase(),
+                                color = Color.White,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        Surface(
+                            color = Color.White,
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Text(
+                                text = report.status.uppercase(),
+                                color = Color.Black,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+
+                // Details matching design
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        text = titleText,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Black,
+                        color = Color.Black
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.LocationOn, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = address.takeIf { it.isNotBlank() } ?: "No Data Available",
+                            fontSize = 14.sp,
+                            color = Color.Gray
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Button(
+                            onClick = { if (report.status == "Reported") onTakeCharge(report.id) },
+                            colors = ButtonDefaults.buttonColors(containerColor = GreenPrimary), // Dark green
+                            shape = RoundedCornerShape(999.dp),
+                            modifier = Modifier.weight(1.2f).height(48.dp),
+                            enabled = report.status == "Reported" // Only enable if Reported
+                        ) {
+                            Icon(Icons.Default.VolunteerActivism, contentDescription = null, modifier = Modifier.size(18.dp), tint = Color.White)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("TAKE CHARGE", fontWeight = FontWeight.Bold, color = Color.White)
+                        }
+
+                        OutlinedButton(
+                            onClick = { onNavigate(report.latitude, report.longitude) },
+                            shape = RoundedCornerShape(999.dp),
+                            modifier = Modifier.weight(1f).height(48.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.Black),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Color.LightGray)
+                        ) {
+                            Icon(Icons.Default.Navigation, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Navigate", fontWeight = FontWeight.Medium)
+                        }
+                    }
                 }
             }
-            AsyncImage(
-                model = imgModel,
-                contentDescription = "Report image",
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize()
-            )
-            
-            // Status Tag
-            Surface(
-                color = GreenPrimary.copy(alpha = 0.9f),
-                shape = RoundedCornerShape(12.dp),
-                modifier = Modifier.padding(16.dp).align(Alignment.TopStart)
-            ) {
-                Text(
-                    text = "AI VERIFIED",
-                    color = Color.White,
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Black
-                )
-            }
         }
 
-        Spacer(modifier = Modifier.height(20.dp))
-
-        Text(
-            text = report.wasteType,
-            fontSize = 24.sp,
-            fontWeight = FontWeight.Black,
-            color = OnBackground
-        )
-        
-        Text(
-            text = "📍 $address",
-            fontSize = 14.sp,
-            color = OnSurfaceVariant,
-            modifier = Modifier.padding(vertical = 4.dp)
-        )
-
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 8.dp)) {
-            Surface(
-                color = when (report.status) {
-                    "Reported" -> Color(0xFFFFDAD6)
-                    "Assigned" -> Color(0xFFFEF3C7)
-                    "Cleaned"  -> SecondaryContainer
-                    else       -> Color.LightGray
-                },
-                shape = RoundedCornerShape(999.dp)
-            ) {
-                Text(
-                    text = report.status.uppercase(),
-                    color = when (report.status) {
-                        "Reported" -> Color(0xFFBA1A1A)
-                        "Assigned" -> Color(0xFF92400E)
-                        "Cleaned"  -> GreenPrimary
-                        else       -> Color.DarkGray
-                    },
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Black,
-                    letterSpacing = 1.sp
-                )
-            }
-            Spacer(modifier = Modifier.width(12.dp))
-            Text(text = "📏 $distance", fontSize = 12.sp, color = OnSurfaceVariant, fontWeight = FontWeight.Bold)
-        }
-
-        Divider(modifier = Modifier.padding(vertical = 16.dp), color = OnSurfaceVariant.copy(alpha = 0.1f))
-
-        Text("Evidence Analysis", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = OnBackground)
-        Text(
-            "Dominant ${report.wasteType} identified. High risk for local ecosystem drainage.",
-            fontSize = 13.sp,
-            color = OnSurfaceVariant,
-            lineHeight = 18.sp
-        )
-
-        Spacer(modifier = Modifier.height(24.dp))
-
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
-            Button(
-                onClick = { onNavigate(report.latitude, report.longitude) },
-                modifier = Modifier.weight(1.5f).height(56.dp),
-                shape = RoundedCornerShape(999.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = GreenPrimary)
-            ) {
-                Icon(Icons.Default.Navigation, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("GET DIRECTIONS", fontWeight = FontWeight.Black, fontSize = 13.sp)
-            }
-
-            OutlinedButton(
+        // Floating Camera Button Overlapping Card
+        if (report.status == "Assigned" && report.cleanerId == uid) {
+            FloatingActionButton(
                 onClick = {
-                    val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                        type = "text/plain"
-                        putExtra(Intent.EXTRA_TEXT, "Eco Alert: ${report.wasteType} at $address")
-                    }
-                    context.startActivity(Intent.createChooser(shareIntent, "Share Alert"))
+                    galleryLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
                 },
-                shape = RoundedCornerShape(999.dp),
-                modifier = Modifier.weight(1f).height(56.dp),
-                border = androidx.compose.foundation.BorderStroke(1.dp, OnSurfaceVariant.copy(alpha = 0.2f))
-            ) {
-                Icon(Icons.Default.IosShare, contentDescription = null, tint = OnBackground, modifier = Modifier.size(18.dp))
-            }
-        }
-
-        if (report.status == "Reported" && role == "Volunteer") {
-            Spacer(modifier = Modifier.height(12.dp))
-            Button(
-                onClick = { onTakeCharge(report.id) },
-                colors = ButtonDefaults.buttonColors(containerColor = OnBackground),
-                shape = RoundedCornerShape(999.dp),
-                modifier = Modifier.fillMaxWidth().height(56.dp)
-            ) {
-                Text("TAKE CHARGE", fontWeight = FontWeight.Black)
-            }
-        } else if (report.status == "Assigned" && report.cleanerId == uid) {
-            Spacer(modifier = Modifier.height(12.dp))
-            Button(
-                onClick = {
-                    galleryLauncher.launch(
-                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                    )
-                },
-                enabled = !isUploading,
-                colors = ButtonDefaults.buttonColors(containerColor = GreenPrimary),
-                shape = RoundedCornerShape(999.dp),
-                modifier = Modifier.fillMaxWidth().height(56.dp)
+                containerColor = GreenPrimary,
+                contentColor = Color.White,
+                shape = CircleShape,
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .offset(x = 8.dp, y = (-24).dp)
             ) {
                 if (isUploading) {
-                    CircularProgressIndicator(color = Color.White, modifier = Modifier.size(20.dp))
+                    CircularProgressIndicator(color = Color.White, modifier = Modifier.size(24.dp))
                 } else {
-                    Text("UPLOAD PROOF & COMPLETE", fontWeight = FontWeight.Black)
+                    Icon(Icons.Default.AddAPhoto, contentDescription = "Upload Proof")
                 }
             }
         }
@@ -755,4 +781,29 @@ fun ZoneSummaryBottomSheetContent(zone: Zone, reports: List<Report>, userLocatio
             Text("View Zone Reports")
         }
     }
+}
+
+fun createExclamationMarker(context: android.content.Context): com.google.android.gms.maps.model.BitmapDescriptor {
+    val width = 100
+    val height = 130
+    val bitmap = android.graphics.Bitmap.createBitmap(width, height, android.graphics.Bitmap.Config.ARGB_8888)
+    val canvas = android.graphics.Canvas(bitmap)
+    val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
+    
+    val path = android.graphics.Path()
+    path.arcTo(android.graphics.RectF(0f, 0f, width.toFloat(), width.toFloat()), 180f, 180f, false)
+    path.lineTo(width / 2f, height.toFloat())
+    path.lineTo(0f, width / 2f)
+    path.close()
+    
+    paint.color = android.graphics.Color.parseColor("#B3261E")
+    canvas.drawPath(path, paint)
+    
+    paint.color = android.graphics.Color.WHITE
+    paint.textSize = 50f
+    paint.typeface = android.graphics.Typeface.DEFAULT_BOLD
+    paint.textAlign = android.graphics.Paint.Align.CENTER
+    canvas.drawText("!", width / 2f, width / 2f + 15f, paint)
+    
+    return BitmapDescriptorFactory.fromBitmap(bitmap)
 }

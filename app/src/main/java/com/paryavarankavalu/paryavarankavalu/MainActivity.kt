@@ -3,6 +3,8 @@ package com.paryavarankavalu.paryavarankavalu
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
+import androidx.lifecycle.ViewModelProvider
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
@@ -51,13 +53,30 @@ import com.paryavarankavalu.paryavarankavalu.viewmodel.MainViewModel
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
+        val splashScreen = installSplashScreen()
         super.onCreate(savedInstanceState)
+        
+        val viewModel = ViewModelProvider(this)[MainViewModel::class.java]
+        
+        // Start tracking early to satisfy splash readiness
+        viewModel.startLocationTracking(this)
+        
+        splashScreen.setKeepOnScreenCondition {
+            !viewModel.isReady.value
+        }
+
         val auth = FirebaseAuth.getInstance()
         val startDest = if (auth.currentUser != null) "home" else "auth"
 
         setContent {
+            val isReady by viewModel.isReady.collectAsState()
+            
             ParyavaranKavaluTheme {
-                AppMain(startDest)
+                if (!isReady) {
+                    SplashScreenContent()
+                } else {
+                    AppMain(startDest, viewModel)
+                }
             }
         }
     }
@@ -65,11 +84,10 @@ class MainActivity : ComponentActivity() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AppMain(startDest: String) {
+fun AppMain(startDest: String, viewModel: MainViewModel = viewModel()) {
     val navController = rememberNavController()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
-    val viewModel: MainViewModel = viewModel()
 
     // Hiding logic
     val shouldShowNavbar = currentDestination?.route?.let { route ->

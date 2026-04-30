@@ -17,6 +17,7 @@ import com.paryavarankavalu.paryavarankavalu.service.Zone
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 
 class MainViewModel : ViewModel() {
     private val repository = AppRepository()
@@ -48,6 +49,9 @@ class MainViewModel : ViewModel() {
     private val _isTracking = MutableStateFlow(false)
     val isTracking: StateFlow<Boolean> = _isTracking
 
+    private val _isReady = MutableStateFlow(false)
+    val isReady: StateFlow<Boolean> = _isReady
+
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading
 
@@ -62,15 +66,30 @@ class MainViewModel : ViewModel() {
         auth.currentUser?.uid?.let { uid ->
             repository.observeUserProfile(uid) { profile ->
                 _userProfile.value = profile
+                checkReadyStatus()
             }
+        } ?: run {
+            // Not logged in, auth state is "retrieved" (null)
+            checkReadyStatus()
         }
         
         repository.observeLeaderboard { users ->
             _leaderboard.value = users
         }
+
+        // Safety Timeout: Ensure splash screen dismisses even if data retrieval is slow
+        viewModelScope.launch {
+            delay(3500) // Reduced to 3.5 seconds for better UX
+            if (!_isReady.value) {
+                Log.w("MainViewModel", "Splash timeout reached. Forcing ready state.")
+                _isReady.value = true
+            }
+        }
     }
 
     fun startLocationTracking(context: Context) {
+        if (_isTracking.value) return
+        
         if (fusedLocationClient == null) {
             fusedLocationClient = LocationServices.getFusedLocationProviderClient(context)
         }
@@ -81,30 +100,17 @@ class MainViewModel : ViewModel() {
 
         locationCallback = object : LocationCallback() {
             override fun onLocationResult(result: LocationResult) {
-                if (result.lastLocation != null) {
-                    result.lastLocation?.let {
-                        val newLatLng = LatLng(it.latitude, it.longitude)
-                        _userLocation.value = newLatLng
-                        
-                        val nearest = LocationUtils.getNearestZone(it.latitude, it.longitude)
-                        _nearestZone.value = nearest
-                        
-                        if (_activeRegion.value == "All India") {
-                            _activeRegion.value = nearest.name
-                        }
+                result.lastLocation?.let {
+                    val newLatLng = LatLng(it.latitude, it.longitude)
+                    _userLocation.value = newLatLng
+                    
+                    val nearest = LocationUtils.getNearestZone(it.latitude, it.longitude)
+                    _nearestZone.value = nearest
+                    
+                    if (_activeRegion.value == "All India") {
+                        _activeRegion.value = nearest.name
                     }
-                } else {
-                    try {
-                        fusedLocationClient?.lastLocation?.addOnSuccessListener { loc ->
-                            loc?.let {
-                                _userLocation.value = LatLng(it.latitude, it.longitude)
-                                val nearest = LocationUtils.getNearestZone(it.latitude, it.longitude)
-                                _nearestZone.value = nearest
-                            }
-                        }
-                    } catch (e: SecurityException) {
-                        Log.e("MainViewModel", "Security exception getting last location", e)
-                    }
+                    checkReadyStatus()
                 }
             }
         }
@@ -119,6 +125,8 @@ class MainViewModel : ViewModel() {
         } catch (unlikely: SecurityException) {
             Log.e("MainViewModel", "Lost location permission. $unlikely")
             _isTracking.value = false
+            // If permission is denied, don't hang the splash screen
+            checkReadyStatus()
         }
     }
 
@@ -217,5 +225,13 @@ class MainViewModel : ViewModel() {
 
     suspend fun completeCleanup(reportId: String, photoUrl: String) {
         repository.completeCleanup(reportId, photoUrl)
+    }
+
+    private fun checkReadyStatus() {
+        val authReady = auth.currentUser == null || _userProfile.value != null
+        val locationReady = _userLocation.value != null
+        if (authReady && locationReady) {
+            _isReady.value = true
+        }
     }
 }

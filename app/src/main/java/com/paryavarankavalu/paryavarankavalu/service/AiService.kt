@@ -58,4 +58,13 @@ class AiService(private val apiKey: String) {
             return if (isCleanup) "Needs More Cleaning" else "General Waste"
         }
     }
+
+    fun determinePriority(wasteType: String): String {
+        return when (wasteType) {
+            "Hazardous Waste", "Medical Waste" -> "High"
+            "Electronic Waste", "Bio Waste" -> "Medium"
+            "General Waste", "Plastic Waste" -> "Low"
+            else -> "Low"
+        }
+    }
 }

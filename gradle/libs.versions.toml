@@ -56,6 +56,7 @@ androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "j
 androidx-espresso-core = { group = "androidx.test.espresso", name = "espresso-core", version.ref = "espressoCore" }
 guava = { group = "com.google.guava", name = "guava", version.ref = "guava" }
 google-generativeai = { group = "com.google.ai.client.generativeai", name = "generativeai", version.ref = "generativeai" }
+androidx-core-splashscreen = { group = "androidx.core", name = "core-splashscreen", version = "1.0.1" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
