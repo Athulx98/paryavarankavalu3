@@ -12,9 +12,7 @@ import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -25,7 +23,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
+import androidx.navigation.NavGraph.Companion.findStartDestination
 import com.google.firebase.auth.FirebaseAuth
+import com.paryavarankavalu.paryavarankavalu.model.Report
+import com.paryavarankavalu.paryavarankavalu.model.UserProfile
 import com.paryavarankavalu.paryavarankavalu.ui.theme.*
 import com.paryavarankavalu.paryavarankavalu.viewmodel.MainViewModel
 
@@ -34,8 +35,10 @@ fun ProfileScreen(navController: NavController, viewModel: MainViewModel = viewM
     val userProfile by viewModel.userProfile.collectAsState()
     val reports by viewModel.reports.collectAsState()
     
-    // Filter reports to only show those made by the current user
-    val myReports = reports.filter { it.reporterId == (userProfile?.uid ?: "") }
+    // Filter reports to only show those made by the current user with memoization
+    val myReports = remember(reports, userProfile) {
+        reports.filter { it.reporterId == (userProfile?.uid ?: "") }
+    }
 
     val levelInfo = getLevelInfo(userProfile?.ecoKarma ?: 0)
 
@@ -125,7 +128,7 @@ fun ProfileScreen(navController: NavController, viewModel: MainViewModel = viewM
                             modifier = Modifier.size(48.dp).background(Color(0xFFFFF7ED), CircleShape),
                             contentAlignment = Alignment.Center
                         ) {
-                            Icon(Icons.Default.Star, contentDescription = null, tint = Color(0xFFF97316)) // Changed from Whatshot to Star for compatibility
+                            Icon(Icons.Default.Star, contentDescription = null, tint = Color(0xFFF97316))
                         }
                         Spacer(modifier = Modifier.width(16.dp))
                         Column {
@@ -207,7 +210,21 @@ fun ProfileScreen(navController: NavController, viewModel: MainViewModel = viewM
 
             items(myReports) { report ->
                 Box(Modifier.padding(vertical = 8.dp)) {
-                    ReportCard(report, userProfile, onBookClick = {})
+                    ReportCard(
+                        report = report,
+                        userProfile = userProfile,
+                        onBookClick = {},
+                        onCardClick = { 
+                            viewModel.setSelectedReportId(report.id)
+                            navController.navigate("map") {
+                                popUpTo(navController.graph.findStartDestination().id) {
+                                    saveState = true
+                                }
+                                launchSingleTop = true
+                                restoreState = true
+                            }
+                        }
+                    )
                 }
             }
 

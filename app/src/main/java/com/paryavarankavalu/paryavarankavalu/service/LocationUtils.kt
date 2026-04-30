@@ -32,7 +32,7 @@ object LocationUtils {
         Zone("Alappuzha", 9.4981, 76.3388)
     )
 
-    fun getDistanceFromLatLonInKm(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
+    fun getDistanceInKm(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
         val results = FloatArray(1)
         Location.distanceBetween(lat1, lon1, lat2, lon2, results)
         return (results[0] / 1000).toDouble()
@@ -40,20 +40,57 @@ object LocationUtils {
 
     fun getNearestZone(lat: Double, lng: Double): Zone {
         return SMART_ZONES.filter { it.name != "All India" }
-            .minByOrNull { getDistanceFromLatLonInKm(lat, lng, it.latitude, it.longitude) }
+            .minByOrNull { getDistanceInKm(lat, lng, it.latitude, it.longitude) }
             ?: SMART_ZONES[0]
     }
 
     fun getAddressFromLatLng(context: Context, lat: Double, lng: Double): String {
         return try {
             val geocoder = Geocoder(context, Locale.getDefault())
-            val addresses = geocoder.getFromLocation(lat, lng, 1)
-            addresses?.firstOrNull()?.let {
-                listOfNotNull(it.thoroughfare, it.subLocality, it.locality)
-                    .joinToString(", ")
-            } ?: "Unknown Location"
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                // For Tiramisu+ we should ideally use the async API, 
+                // but for simplicity in this utility we use a blocking call if needed or return coordinates
+                val addresses = geocoder.getFromLocation(lat, lng, 1)
+                addresses?.firstOrNull()?.let {
+                    listOfNotNull(it.thoroughfare, it.subLocality, it.locality)
+                        .joinToString(", ")
+                } ?: "Lat: %.4f, Lng: %.4f".format(lat, lng)
+            } else {
+                @Suppress("DEPRECATION")
+                val addresses = geocoder.getFromLocation(lat, lng, 1)
+                addresses?.firstOrNull()?.let {
+                    listOfNotNull(it.thoroughfare, it.subLocality, it.locality)
+                        .joinToString(", ")
+                } ?: "Lat: %.4f, Lng: %.4f".format(lat, lng)
+            }
         } catch (e: Exception) {
-            "Address unavailable"
+            "Lat: %.4f, Lng: %.4f".format(lat, lng)
         }
+    }
+
+    fun formatDistance(distanceKm: Double): String {
+        return if (distanceKm < 1.0) {
+            "${(distanceKm * 1000).toInt()}m"
+        } else {
+            "%.1fkm".format(distanceKm)
+        }
+    }
+
+    fun estimateWalkingTime(distanceKm: Double): String {
+        val speedKmH = 5.0
+        val timeHours = distanceKm / speedKmH
+        val totalMinutes = (timeHours * 60).toInt()
+        
+        return if (totalMinutes < 60) {
+            "$totalMinutes min walk"
+        } else {
+            val hours = totalMinutes / 60
+            val minutes = totalMinutes % 60
+            if (minutes == 0) "$hours hr walk" else "$hours hr $minutes min walk"
+        }
+    }
+
+    fun isWithinRadius(lat1: Double, lon1: Double, lat2: Double, lon2: Double, radiusKm: Double): Boolean {
+        return getDistanceInKm(lat1, lon1, lat2, lon2) <= radiusKm
     }
 }

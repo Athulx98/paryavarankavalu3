@@ -38,32 +38,34 @@ fun CommunityScreen(navController: NavController, viewModel: MainViewModel = vie
     val reports by viewModel.reports.collectAsState()
     val leaderboard by viewModel.leaderboard.collectAsState()
     val userProfile by viewModel.userProfile.collectAsState()
-    val cleanedReports = reports.filter { it.status == "Cleaned" }.sortedByDescending { it.timestamp }
+    val cleanedReports = remember(reports) {
+        reports.filter { it.status == "Cleaned" }.sortedByDescending { it.timestamp }
+    }
     
     var selectedTab by remember { mutableIntStateOf(0) }
     val tabs = listOf("Eco Feed", "Leaderboard")
 
     Scaffold(
-        containerColor = Sage50,
+        containerColor = Background,  // #F3FCEF sage
         topBar = {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(Color.White)
+                    .background(SurfaceContainerLowest)  // white app bar
                     .padding(top = 48.dp)
             ) {
                 Text(
                     text = "Community",
                     fontWeight = FontWeight.Black,
                     fontSize = 28.sp,
-                    color = Forest900,
+                    color = OnBackground,
                     letterSpacing = (-1).sp,
-                    modifier = Modifier.padding(horizontal = 24.dp)
+                    modifier = Modifier.padding(horizontal = 20.dp)
                 )
                 
                 TabRow(
                     selectedTabIndex = selectedTab,
-                    containerColor = Color.White,
+                    containerColor = SurfaceContainerLowest,
                     contentColor = GreenPrimary,
                     indicator = { tabPositions ->
                         if (selectedTab < tabPositions.size) {
@@ -130,7 +132,7 @@ fun LeaderboardSection(users: List<UserProfile>) {
                 "Top Contributors",
                 fontWeight = FontWeight.Black,
                 fontSize = 18.sp,
-                color = Forest900,
+                color = OnBackground,
                 modifier = Modifier.padding(bottom = 16.dp)
             )
         }
@@ -147,7 +149,7 @@ fun LeaderboardItem(rank: Int, user: UserProfile) {
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 6.dp),
-        color = Color.White,
+        color = SurfaceContainerLowest,  // white card
         shape = RoundedCornerShape(16.dp),
         shadowElevation = 1.dp
     ) {
@@ -159,34 +161,34 @@ fun LeaderboardItem(rank: Int, user: UserProfile) {
                 text = rank.toString(),
                 fontWeight = FontWeight.Black,
                 fontSize = 16.sp,
-                color = if (rank <= 3) GreenPrimary else Sage400,
+                color = if (rank <= 3) GreenPrimary else OnSurfaceVariant,
                 modifier = Modifier.width(32.dp)
             )
             
             Box(
                 modifier = Modifier
                     .size(40.dp)
-                    .background(Sage50, CircleShape),
+                    .background(SurfaceContainerLow, CircleShape),  // #EDF6EA
                 contentAlignment = Alignment.Center
             ) {
                 Text(
                     user.displayName.firstOrNull()?.toString() ?: "U",
                     fontWeight = FontWeight.Bold,
-                    color = Forest900
+                    color = OnBackground
                 )
             }
             
             Spacer(modifier = Modifier.width(16.dp))
             
             Column(modifier = Modifier.weight(1f)) {
-                Text(user.displayName, fontWeight = FontWeight.Bold, color = Forest900, fontSize = 14.sp)
-                Text("${user.role} • ${user.cleanupsCount} cleanups", fontSize = 11.sp, color = Sage400)
+                Text(user.displayName, fontWeight = FontWeight.Bold, color = OnBackground, fontSize = 14.sp)
+                Text("${user.role} • ${user.cleanupsCount} cleanups", fontSize = 11.sp, color = OnSurfaceVariant)
             }
             
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.Star, contentDescription = null, tint = Color(0xFFF59E0B), modifier = Modifier.size(16.dp))
                 Spacer(modifier = Modifier.width(4.dp))
-                Text(user.ecoKarma.toString(), fontWeight = FontWeight.Black, color = Forest900)
+                Text(user.ecoKarma.toString(), fontWeight = FontWeight.Black, color = OnBackground)
             }
         }
     }
@@ -199,9 +201,9 @@ fun CleanupPost(report: Report, currentUserId: String, onLike: (String) -> Unit)
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 24.dp, vertical = 12.dp),
+            .padding(horizontal = 20.dp, vertical = 12.dp),  // Stitch 20dp outer margin
         shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
+        colors = CardDefaults.cardColors(containerColor = SurfaceContainerLowest),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
@@ -209,7 +211,7 @@ fun CleanupPost(report: Report, currentUserId: String, onLike: (String) -> Unit)
                 Box(
                     modifier = Modifier
                         .size(40.dp)
-                        .background(GreenLight, CircleShape),
+                        .background(SecondaryContainer, CircleShape),  // #B1F2BE
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
@@ -224,10 +226,10 @@ fun CleanupPost(report: Report, currentUserId: String, onLike: (String) -> Unit)
                         text = report.cleanerName ?: "Eco Warrior",
                         fontWeight = FontWeight.Bold,
                         fontSize = 14.sp,
-                        color = Forest900
+                        color = OnBackground
                     )
                     val date = SimpleDateFormat("MMM dd", Locale.getDefault()).format(Date(report.timestamp))
-                    Text(text = "Completed on $date", fontSize = 11.sp, color = Sage400)
+                    Text(text = "Completed on $date", fontSize = 11.sp, color = OnSurfaceVariant)
                 }
             }
 
@@ -236,7 +238,7 @@ fun CleanupPost(report: Report, currentUserId: String, onLike: (String) -> Unit)
             Text(
                 text = "Successfully cleaned a ${report.wasteType} hotspot in ${report.region.ifBlank { "the neighborhood" }}!",
                 fontSize = 14.sp,
-                color = Forest900,
+                color = OnBackground,
                 lineHeight = 20.sp
             )
 
@@ -249,11 +251,16 @@ fun CleanupPost(report: Report, currentUserId: String, onLike: (String) -> Unit)
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text("BEFORE", fontSize = 9.sp, fontWeight = FontWeight.Black, color = Sage400, modifier = Modifier.padding(bottom = 4.dp))
+                    Text("BEFORE", fontSize = 9.sp, fontWeight = FontWeight.Black, color = OnSurfaceVariant, modifier = Modifier.padding(bottom = 4.dp))
                     val rawBeforeUrl = report.photoUrl ?: ""
-                    val beforeModel = if (rawBeforeUrl.startsWith("data:image")) {
-                        android.util.Base64.decode(rawBeforeUrl.substringAfter("base64,"), android.util.Base64.DEFAULT)
-                    } else rawBeforeUrl
+                    var beforeModel by remember(rawBeforeUrl) { mutableStateOf<Any?>(null) }
+                    LaunchedEffect(rawBeforeUrl) {
+                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                            beforeModel = if (rawBeforeUrl.startsWith("data:image")) {
+                                android.util.Base64.decode(rawBeforeUrl.substringAfter("base64,"), android.util.Base64.DEFAULT)
+                            } else rawBeforeUrl
+                        }
+                    }
                     AsyncImage(
                         model = beforeModel,
                         contentDescription = "Before",
@@ -266,9 +273,14 @@ fun CleanupPost(report: Report, currentUserId: String, onLike: (String) -> Unit)
                 Column(modifier = Modifier.weight(1f)) {
                     Text("AFTER", fontSize = 9.sp, fontWeight = FontWeight.Black, color = GreenPrimary, modifier = Modifier.padding(bottom = 4.dp))
                     val rawAfterUrl = report.cleanedPhotoUrl ?: ""
-                    val afterModel = if (rawAfterUrl.startsWith("data:image")) {
-                        android.util.Base64.decode(rawAfterUrl.substringAfter("base64,"), android.util.Base64.DEFAULT)
-                    } else rawAfterUrl
+                    var afterModel by remember(rawAfterUrl) { mutableStateOf<Any?>(null) }
+                    LaunchedEffect(rawAfterUrl) {
+                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                            afterModel = if (rawAfterUrl.startsWith("data:image")) {
+                                android.util.Base64.decode(rawAfterUrl.substringAfter("base64,"), android.util.Base64.DEFAULT)
+                            } else rawAfterUrl
+                        }
+                    }
                     AsyncImage(
                         model = afterModel,
                         contentDescription = "After",
@@ -298,13 +310,13 @@ fun CleanupPost(report: Report, currentUserId: String, onLike: (String) -> Unit)
                     Text(
                         text = "${report.likes.size}",
                         fontSize = 12.sp,
-                        color = Sage400,
+                        color = OnSurfaceVariant,
                         fontWeight = FontWeight.Bold,
                         modifier = Modifier.padding(end = 8.dp)
                     )
                 }
                 IconButton(onClick = { }) {
-                    Icon(Icons.Default.Share, contentDescription = "Share", tint = Sage400)
+                    Icon(Icons.Default.Share, contentDescription = "Share", tint = OnSurfaceVariant)
                 }
             }
         }

@@ -2,27 +2,70 @@ package com.paryavarankavalu.paryavarankavalu.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-val GreenPrimary = Color(0xFF10B981) // Emerald 500
-val GreenDark = Color(0xFF059669) // Emerald 600
-val GreenLight = Color(0xFFD1FAE5) // Emerald 100
+// ─── Stitch Design System: Paryavaran Kavalu ───────────────────────────────
+// Source: Stitch Project 12536717480092909473
 
-val Sage50 = Color(0xFFF8FAFC)
-val Sage100 = Color(0xFFF1F5F9)
-val Sage400 = Color(0xFF94A3B8)
-val Forest900 = Color(0xFF064E3B)
+// Primary (Dark Forest Green)
+val GreenPrimary         = Color(0xFF006E2F)
+val GreenPrimaryContainer= Color(0xFF22C55E)
+val OnGreenPrimary       = Color(0xFFFFFFFF)
+val OnGreenPrimaryContainer = Color(0xFF004B1E)
 
-val PaperBackground = Color(0xFFFFFFFF)
-val TextPrimary = Color(0xFF111827)
-val TextSecondary = Color(0xFF4B5563)
+// Inverse / Fixed
+val InversePrimary       = Color(0xFF4AE176)
 
-val StatusReported = Color(0xFFEF4444)
-val StatusAssigned = Color(0xFFF59E0B)
-val StatusCleaned = Color(0xFF10B981)
+// Secondary
+val Secondary            = Color(0xFF2E6A41)
+val SecondaryContainer   = Color(0xFFB1F2BE)
+val OnSecondary          = Color(0xFFFFFFFF)
+val OnSecondaryContainer = Color(0xFF347047)
 
-val Purple80 = Color(0xFFD0BCFF)
-val PurpleGrey80 = Color(0xFFCCC2DC)
-val Pink80 = Color(0xFFEFB8C8)
+// Tertiary
+val Tertiary             = Color(0xFF486554)
+val TertiaryContainer    = Color(0xFF95B3A0)
+val OnTertiary           = Color(0xFFFFFFFF)
+val OnTertiaryContainer  = Color(0xFF2A4637)
 
-val Purple40 = Color(0xFF6650a4)
-val PurpleGrey40 = Color(0xFF625b71)
-val Pink40 = Color(0xFF7D5260)
+// Backgrounds & Surfaces
+val Background           = Color(0xFFF3FCEF)   // Sage Background
+val OnBackground         = Color(0xFF161D16)
+val Surface              = Color(0xFFF3FCEF)
+val SurfaceDim           = Color(0xFFD4DDD0)
+val SurfaceBright        = Color(0xFFF3FCEF)
+val SurfaceContainerLowest  = Color(0xFFFFFFFF)
+val SurfaceContainerLow     = Color(0xFFEDF6EA)
+val SurfaceContainer        = Color(0xFFE8F0E4)
+val SurfaceContainerHigh    = Color(0xFFE2EBDE)
+val SurfaceContainerHighest = Color(0xFFDCE5D9)
+val OnSurface            = Color(0xFF161D16)
+val OnSurfaceVariant     = Color(0xFF3D4A3D)
+val InverseSurface       = Color(0xFF2A322A)
+val InverseOnSurface     = Color(0xFFEBF3E7)
+
+// Outline
+val Outline              = Color(0xFF6D7B6C)
+val OutlineVariant       = Color(0xFFBCCBB9)
+val SurfaceTint          = Color(0xFF006E2F)
+val SurfaceVariant       = Color(0xFFDCE5D9)
+
+// Error
+val ErrorColor           = Color(0xFFBA1A1A)
+val ErrorContainer       = Color(0xFFFFDAD6)
+val OnError              = Color(0xFFFFFFFF)
+val OnErrorContainer     = Color(0xFF93000A)
+
+// Status semantic colors (UI use only)
+val StatusReported       = Color(0xFFEF4444)
+val StatusAssigned       = Color(0xFFF59E0B)
+val StatusCleaned        = Color(0xFF006E2F)
+
+// Legacy aliases kept for backward-compat (mapped to Stitch tokens)
+val GreenDark            = Color(0xFF005321)
+val GreenLight           = Color(0xFFB1F2BE)   // secondary-container
+val Sage50               = Background
+val Sage100              = SurfaceContainerLow
+val Sage400              = OnSurfaceVariant
+val Forest900            = OnBackground
+val PaperBackground      = SurfaceContainerLowest
+val TextPrimary          = OnBackground
+val TextSecondary        = OnSurfaceVariant

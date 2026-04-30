@@ -406,7 +406,7 @@ fun AnalysisPreview(
                     Text(
                         if (locationReady) regionName else "Fetching coordinates...",
                         fontSize = 12.sp,
-                        color = TextSecondary
+                        color = Color.Gray
                     )
                 }
             }
@@ -467,7 +467,7 @@ fun SuccessView(isCleanupMode: Boolean = false, onFinish: () -> Unit) {
             else 
                 "Your report has been synced with the local authority. +10 Eco Karma earned.",
             textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-            color = TextSecondary,
+            color = Color.Gray,
             modifier = Modifier.padding(horizontal = 32.dp)
         )
         Spacer(modifier = Modifier.height(48.dp))
@@ -491,8 +491,9 @@ private fun analyzeImage(aiService: AiService, bitmap: Bitmap, onResult: (String
 }
 
 private fun uriToBitmap(context: Context, uri: Uri): Bitmap {
-    val inputStream = context.contentResolver.openInputStream(uri)
-    return BitmapFactory.decodeStream(inputStream) ?: Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888)
+    return context.contentResolver.openInputStream(uri)?.use { inputStream ->
+        BitmapFactory.decodeStream(inputStream)
+    } ?: Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888)
 }
 
 private fun ImageProxy.toBitmap(): Bitmap {

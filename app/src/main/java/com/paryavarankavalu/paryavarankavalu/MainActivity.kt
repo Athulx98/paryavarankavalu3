@@ -27,6 +27,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.font.FontWeight
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavType
@@ -37,6 +38,13 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.google.firebase.auth.FirebaseAuth
 import com.paryavarankavalu.paryavarankavalu.ui.theme.GreenPrimary
+import com.paryavarankavalu.paryavarankavalu.ui.theme.GreenPrimaryContainer
+import com.paryavarankavalu.paryavarankavalu.ui.theme.OnGreenPrimaryContainer
+import com.paryavarankavalu.paryavarankavalu.ui.theme.Background
+import com.paryavarankavalu.paryavarankavalu.ui.theme.SurfaceContainerLowest
+import com.paryavarankavalu.paryavarankavalu.ui.theme.OnSurface
+import com.paryavarankavalu.paryavarankavalu.ui.theme.OnSurfaceVariant
+import com.paryavarankavalu.paryavarankavalu.ui.theme.Outline
 import com.paryavarankavalu.paryavarankavalu.ui.theme.ParyavaranKavaluTheme
 import com.paryavarankavalu.paryavarankavalu.uii.screen.*
 import com.paryavarankavalu.paryavarankavalu.viewmodel.MainViewModel
@@ -95,8 +103,8 @@ fun AppMain(startDest: String) {
             startDestination = startDest,
             modifier = Modifier.padding(padding)
         ) {
-            composable("auth") { AuthScreen(navController) }
-            composable("home") { HomeScreen(navController) }
+            composable("auth") { AuthScreen(navController, viewModel) }
+            composable("home") { HomeScreen(navController, viewModel) }
             composable(
                 route = "report?reportId={reportId}",
                 arguments = listOf(navArgument("reportId") { 
@@ -106,50 +114,57 @@ fun AppMain(startDest: String) {
                 })
             ) { backStackEntry ->
                 val rId = backStackEntry.arguments?.getString("reportId")
-                ReportScreen(navController, reportId = rId)
+                ReportScreen(navController, viewModel, reportId = rId)
             }
-            composable("map") { MapScreen(navController = navController, viewModel = viewModel) }
-            composable("community") { CommunityScreen(navController) }
-            composable("profile") { ProfileScreen(navController) }
+            composable("map") { MapScreen(navController, viewModel) }
+            composable("community") { CommunityScreen(navController, viewModel) }
+            composable("profile") { ProfileScreen(navController, viewModel) }
         }
     }
 }
 
 @Composable
 fun CustomBottomBar(onNavigate: (String) -> Unit, currentRoute: String) {
+    // Stitch: Level 1 card surface — pure white, 24dp radius, soft ambient shadow
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(16.dp)
-            .shadow(12.dp, RoundedCornerShape(24.dp))
-            .clip(RoundedCornerShape(24.dp)),
-        color = Color.White
+            .padding(horizontal = 20.dp, vertical = 12.dp)
+            .shadow(12.dp, RoundedCornerShape(28.dp))
+            .clip(RoundedCornerShape(28.dp)),
+        color = SurfaceContainerLowest  // #FFFFFF
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(72.dp)
+                .height(68.dp)
                 .padding(horizontal = 8.dp),
             horizontalArrangement = Arrangement.SpaceAround,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            BottomTabItem("home", Icons.Default.Home, "Home", currentRoute == "home", onNavigate)
-            BottomTabItem("map", Icons.Default.LocationOn, "Map", currentRoute == "map", onNavigate)
-            
-            // Central Floating Action Button
+            BottomTabItem("home",      Icons.Default.Home,       "Home",    currentRoute == "home",      onNavigate)
+            BottomTabItem("map",       Icons.Default.LocationOn, "Map",     currentRoute == "map",       onNavigate)
+
+            // Stitch FAB — pill-shaped, primary-container color, Level 2 shadow
             Box(
                 modifier = Modifier
                     .size(56.dp)
+                    .shadow(6.dp, CircleShape)
                     .clip(CircleShape)
-                    .background(GreenPrimary)
+                    .background(GreenPrimaryContainer)   // #22C55E
                     .clickable { onNavigate("report") },
                 contentAlignment = Alignment.Center
             ) {
-                Icon(Icons.Default.Add, contentDescription = "Report", tint = Color.White, modifier = Modifier.size(32.dp))
+                Icon(
+                    Icons.Default.Add,
+                    contentDescription = "Report Issue",
+                    tint  = OnGreenPrimaryContainer,     // #004B1E
+                    modifier = Modifier.size(28.dp)
+                )
             }
 
-            BottomTabItem("community", Icons.Default.Star, "Feed", currentRoute == "community", onNavigate)
-            BottomTabItem("profile", Icons.Default.Person, "Profile", currentRoute == "profile", onNavigate)
+            BottomTabItem("community", Icons.Default.Star,       "Feed",    currentRoute == "community", onNavigate)
+            BottomTabItem("profile",   Icons.Default.Person,     "Profile", currentRoute == "profile",   onNavigate)
         }
     }
 }
@@ -162,25 +177,32 @@ fun RowScope.BottomTabItem(
     isSelected: Boolean,
     onNavigate: (String) -> Unit
 ) {
+    // Stitch: active item gets pill-shaped primary-tinted background pill
+    val bgColor = if (isSelected) GreenPrimaryContainer.copy(alpha = 0.15f) else Color.Transparent
+    val fgColor = if (isSelected) GreenPrimary else OnSurfaceVariant
+
     Column(
         modifier = Modifier
             .weight(1f)
-            .clip(RoundedCornerShape(12.dp))
-            .clickable { onNavigate(route) },
+            .clip(RoundedCornerShape(999.dp))
+            .background(bgColor)
+            .clickable { onNavigate(route) }
+            .padding(vertical = 8.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
         Icon(
             icon,
             contentDescription = label,
-            tint = if (isSelected) GreenPrimary else Color.Gray.copy(alpha = 0.6f),
-            modifier = Modifier.size(24.dp)
+            tint     = fgColor,
+            modifier = Modifier.size(22.dp)
         )
         Text(
             label,
             fontSize = 10.sp,
-            color = if (isSelected) GreenPrimary else Color.Gray.copy(alpha = 0.6f),
-            style = MaterialTheme.typography.labelSmall
+            color    = fgColor,
+            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+            style    = MaterialTheme.typography.labelSmall
         )
     }
 }

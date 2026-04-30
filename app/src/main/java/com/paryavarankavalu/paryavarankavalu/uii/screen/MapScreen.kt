@@ -38,6 +38,12 @@ import com.google.maps.android.compose.*
 import com.paryavarankavalu.paryavarankavalu.model.Report
 import com.paryavarankavalu.paryavarankavalu.util.LocationHelper
 import com.paryavarankavalu.paryavarankavalu.viewmodel.MainViewModel
+import com.paryavarankavalu.paryavarankavalu.ui.theme.GreenPrimary
+import com.paryavarankavalu.paryavarankavalu.ui.theme.OnGreenPrimary
+import com.paryavarankavalu.paryavarankavalu.ui.theme.SecondaryContainer
+import com.paryavarankavalu.paryavarankavalu.ui.theme.SurfaceContainerLowest
+import com.paryavarankavalu.paryavarankavalu.ui.theme.OnBackground
+import com.paryavarankavalu.paryavarankavalu.ui.theme.OnSurfaceVariant
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
@@ -183,18 +189,20 @@ fun MapScreen(
         }
     }
 
-    val filteredReports = reports.filter { report ->
-        when (filterStatus) {
-            "All" -> true
-            "My Reports Only" -> report.reporterId == auth.currentUser?.uid
-            else -> {
-                // If filterStatus matches a zone name, show only reports in that zone
-                val matchedZone = SMART_ZONES.find { it.name == filterStatus }
-                if (matchedZone != null) {
-                    getDistanceInKm(report.latitude, report.longitude, matchedZone.latitude, matchedZone.longitude) <= 2.0
-                } else {
-                    // It's a status
-                    report.status == filterStatus.replace(Regex(".*Only|[^A-Za-z]"), "").trim() || report.status == filterStatus
+    val filteredReports = remember(reports, filterStatus) {
+        reports.filter { report ->
+            when (filterStatus) {
+                "All" -> true
+                "My Reports Only" -> report.reporterId == auth.currentUser?.uid
+                else -> {
+                    // If filterStatus matches a zone name, show only reports in that zone
+                    val matchedZone = SMART_ZONES.find { it.name == filterStatus }
+                    if (matchedZone != null) {
+                        getDistanceInKm(report.latitude, report.longitude, matchedZone.latitude, matchedZone.longitude) <= 2.0
+                    } else {
+                        // It's a status
+                        report.status == filterStatus.replace(Regex(".*Only|[^A-Za-z]"), "").trim() || report.status == filterStatus
+                    }
                 }
             }
         }
@@ -269,25 +277,26 @@ fun MapScreen(
             CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
         }
 
-        // Top Search + Filter Bar
+        // Top Search + Filter Bar — Stitch: white card, 24dp pill, 20dp margin, Level 1 shadow
         Surface(
             modifier = Modifier
                 .align(Alignment.TopCenter)
-                .padding(16.dp)
+                .padding(horizontal = 20.dp, vertical = 16.dp)
                 .fillMaxWidth(),
-            shape = RoundedCornerShape(24.dp),
+            shape = RoundedCornerShape(999.dp),
             shadowElevation = 8.dp,
-            color = Color.White
+            color = SurfaceContainerLowest
         ) {
             Row(
                 modifier = Modifier.padding(12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(Icons.Default.LocationOn, contentDescription = null, tint = Color(0xFF10B981))
+                Icon(Icons.Default.LocationOn, contentDescription = null, tint = GreenPrimary)
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
                     text = nearestZone?.name ?: "All Kerala",
                     fontWeight = FontWeight.Bold,
+                    color = OnBackground,
                     modifier = Modifier.weight(1f)
                 )
                 IconButton(onClick = { showHeatmap = !showHeatmap }) {
@@ -306,17 +315,17 @@ fun MapScreen(
             }
         }
 
-        // FAB Column
+        // FAB Column — Stitch: Level 2 shadow, circular
         Column(
             modifier = Modifier
                 .align(Alignment.BottomEnd)
-                .padding(bottom = 32.dp, end = 16.dp),
+                .padding(bottom = 100.dp, end = 16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             FloatingActionButton(
                 onClick = { viewModel.getOneTimeLocation(context) },
-                containerColor = Color.White,
-                contentColor = Color.Blue
+                containerColor = SurfaceContainerLowest,
+                contentColor = GreenPrimary
             ) {
                 Icon(Icons.Default.MyLocation, contentDescription = "Locate Me")
             }
@@ -335,8 +344,8 @@ fun MapScreen(
                         context.startActivity(intent)
                     }
                 },
-                containerColor = Color(0xFF10B981),
-                contentColor = Color.White
+                containerColor = GreenPrimary,   // #006E2F
+                contentColor = OnGreenPrimary     // #FFFFFF
             ) {
                 Icon(Icons.Default.Navigation, contentDescription = "Navigate")
             }
@@ -353,7 +362,13 @@ fun MapScreen(
                 onDismissRequest = { showFilterSheet = false }
             ) {
                 Column(modifier = Modifier.padding(16.dp).padding(bottom = 32.dp)) {
-                    Text("Filter Reports", fontWeight = FontWeight.Bold, fontSize = 20.sp, modifier = Modifier.padding(bottom = 16.dp))
+                    Text(
+                        "Filter Reports",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 20.sp,
+                        color = OnBackground,
+                        modifier = Modifier.padding(bottom = 16.dp)
+                    )
                     val filters = listOf(
                         "All",
                         "Reported",
@@ -478,9 +493,14 @@ fun ReportDetailBottomSheet(
                 .clip(RoundedCornerShape(12.dp))
         ) {
             val rawUrl = (if (report.status == "Cleaned") report.cleanedPhotoUrl else report.photoUrl) ?: ""
-            val imgModel = if (rawUrl.startsWith("data:image")) {
-                android.util.Base64.decode(rawUrl.substringAfter("base64,"), android.util.Base64.DEFAULT)
-            } else rawUrl
+            var imgModel by remember(rawUrl) { mutableStateOf<Any?>(null) }
+            LaunchedEffect(rawUrl) {
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    imgModel = if (rawUrl.startsWith("data:image")) {
+                        android.util.Base64.decode(rawUrl.substringAfter("base64,"), android.util.Base64.DEFAULT)
+                    } else rawUrl
+                }
+            }
             AsyncImage(
                 model = imgModel,
                 contentDescription = "Report image",
@@ -507,22 +527,23 @@ fun ReportDetailBottomSheet(
         Spacer(modifier = Modifier.height(16.dp))
 
         Row(verticalAlignment = Alignment.CenterVertically) {
+            // Stitch: pill status badge
             Surface(
                 color = when (report.status) {
                     "Reported" -> Color.Red.copy(alpha = 0.1f)
                     "Assigned" -> Color(0xFFF59E0B).copy(alpha = 0.1f)
-                    "Cleaned" -> Color.Green.copy(alpha = 0.1f)
-                    else -> Color.Gray.copy(alpha = 0.1f)
+                    "Cleaned"  -> SecondaryContainer.copy(alpha = 0.7f)  // #B1F2BE
+                    else       -> Color.Gray.copy(alpha = 0.1f)
                 },
-                shape = RoundedCornerShape(16.dp)
+                shape = RoundedCornerShape(999.dp)
             ) {
                 Text(
                     text = report.status,
                     color = when (report.status) {
                         "Reported" -> Color.Red
                         "Assigned" -> Color(0xFFF59E0B)
-                        "Cleaned" -> Color(0xFF10B981)
-                        else -> Color.Gray
+                        "Cleaned"  -> GreenPrimary
+                        else       -> Color.Gray
                     },
                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                     fontSize = 12.sp,
@@ -532,24 +553,27 @@ fun ReportDetailBottomSheet(
         }
 
         Spacer(modifier = Modifier.height(8.dp))
-        Text(text = "📍 $address", fontSize = 14.sp)
-        Text(text = "📏 $distance", fontSize = 14.sp, color = Color.Gray)
-        
+        Text(text = "📍 $address", fontSize = 14.sp, color = OnBackground)
+        Text(text = "📏 $distance", fontSize = 14.sp, color = OnSurfaceVariant)
+
         val format = SimpleDateFormat("MMM dd, yyyy HH:mm", Locale.getDefault())
-        Text(text = "🕐 ${format.format(Date(report.timestamp))}", fontSize = 14.sp, color = Color.Gray)
+        Text(text = "🕐 ${format.format(Date(report.timestamp))}", fontSize = 14.sp, color = OnSurfaceVariant)
 
         Spacer(modifier = Modifier.height(16.dp))
 
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+            // Stitch: pill-shaped primary button
             Button(
                 onClick = { onNavigate(report.latitude, report.longitude) },
-                modifier = Modifier.weight(1f)
+                modifier = Modifier.weight(1f),
+                shape = RoundedCornerShape(999.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = GreenPrimary)
             ) {
                 Icon(Icons.Default.Navigation, contentDescription = null)
                 Spacer(modifier = Modifier.width(4.dp))
                 Text("Navigate")
             }
-            
+
             Button(
                 onClick = {
                     val shareIntent = Intent(Intent.ACTION_SEND).apply {
@@ -558,7 +582,8 @@ fun ReportDetailBottomSheet(
                     }
                     context.startActivity(Intent.createChooser(shareIntent, "Share via"))
                 },
-                colors = ButtonDefaults.buttonColors(containerColor = Color.Gray),
+                colors = ButtonDefaults.buttonColors(containerColor = OnSurfaceVariant),
+                shape = RoundedCornerShape(999.dp),
                 modifier = Modifier.weight(1f)
             ) {
                 Icon(Icons.Default.Share, contentDescription = null)
@@ -572,18 +597,20 @@ fun ReportDetailBottomSheet(
         if (report.status == "Reported" && role == "Volunteer") {
             Button(
                 onClick = { onTakeCharge(report.id) },
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF10B981)),
+                colors = ButtonDefaults.buttonColors(containerColor = GreenPrimary),
+                shape = RoundedCornerShape(999.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text("Take Charge")
             }
         } else if (report.status == "Assigned" && report.cleanerId == uid) {
             Button(
-                onClick = { 
+                onClick = {
                     // In a real implementation this would open a camera launcher
-                    onCompleteCleanup(report.id, "dummy_url") 
+                    onCompleteCleanup(report.id, "dummy_url")
                 },
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF10B981)),
+                colors = ButtonDefaults.buttonColors(containerColor = GreenPrimary),
+                shape = RoundedCornerShape(999.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text("Upload Proof & Complete")
@@ -592,10 +619,11 @@ fun ReportDetailBottomSheet(
             Button(
                 onClick = { },
                 enabled = false,
-                colors = ButtonDefaults.buttonColors(disabledContainerColor = Color.Green.copy(alpha = 0.5f)),
+                colors = ButtonDefaults.buttonColors(disabledContainerColor = SecondaryContainer),
+                shape = RoundedCornerShape(999.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text("✅ Spot Restored", color = Color.White)
+                Text("✅ Spot Restored", color = GreenPrimary)
             }
         }
     }
@@ -620,31 +648,36 @@ fun ZoneSummaryBottomSheetContent(zone: Zone, reports: List<Report>, userLocatio
     } else ""
 
     Column(modifier = Modifier.padding(16.dp).padding(bottom = 32.dp).fillMaxWidth()) {
-        Text(zone.name, fontWeight = FontWeight.Bold, fontSize = 24.sp)
+        Text(zone.name, fontWeight = FontWeight.Bold, fontSize = 24.sp, color = OnBackground)
         if (distStr.isNotEmpty()) {
-            Text(distStr, color = Color.Gray)
+            Text(distStr, color = OnSurfaceVariant)
         }
-        
+
         Spacer(modifier = Modifier.height(16.dp))
-        
-        Text("Reports: Total $total | 🔴 $reported | 🟠 $assigned | 🟢 $cleaned", fontWeight = FontWeight.Medium)
-        
+
+        Text("Reports: Total $total | 🔴 $reported | 🟠 $assigned | 🟢 $cleaned", fontWeight = FontWeight.Medium, color = OnBackground)
+
         Spacer(modifier = Modifier.height(16.dp))
-        
-        Text("Cleanliness Score: ${score.toInt()}%", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+
+        Text("Cleanliness Score: ${score.toInt()}%", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = OnBackground)
+        // Stitch: thick 12dp pill progress bar, secondary-container track, primary indicator
         LinearProgressIndicator(
             progress = { score / 100f },
-            modifier = Modifier.fillMaxWidth().height(12.dp).clip(RoundedCornerShape(6.dp)),
-            color = Color(0xFF10B981),
-            trackColor = Color.LightGray
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(12.dp)
+                .clip(RoundedCornerShape(999.dp)),
+            color = GreenPrimary,
+            trackColor = SecondaryContainer   // #B1F2BE
         )
-        
+
         Spacer(modifier = Modifier.height(24.dp))
-        
+
         Button(
             onClick = onViewReports,
             modifier = Modifier.fillMaxWidth(),
-            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF10B981))
+            shape = RoundedCornerShape(999.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = GreenPrimary)
         ) {
             Text("View Zone Reports")
         }

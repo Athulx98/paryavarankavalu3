@@ -23,7 +23,7 @@ import com.paryavarankavalu.paryavarankavalu.ui.theme.Sage50
 import com.paryavarankavalu.paryavarankavalu.viewmodel.MainViewModel
 
 @Composable
-fun AuthScreen(navController: NavController, viewModel: MainViewModel = viewModel()) {
+fun AuthScreen(navController: NavController, viewModel: MainViewModel) {
     var isLogin by remember { mutableStateOf(true) }
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }

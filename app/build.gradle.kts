@@ -90,6 +90,9 @@ dependencies {
     // Image loading
     implementation(libs.coil.compose)
 
+    // Google Fonts (Plus Jakarta Sans)
+    implementation(libs.compose.ui.text.google.fonts)
+
     // Accompanist for Permissions
     implementation(libs.accompanist.permissions)
 
