@@ -55,6 +55,7 @@ fun MapScreen(
     val isTracking by viewModel.isTracking.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
     val error by viewModel.error.collectAsState()
+    val selectedReportId by viewModel.selectedReportId.collectAsState()
     
     var selectedReport by remember { mutableStateOf<Report?>(null) }
     var showHeatmap by remember { mutableStateOf(false) }
@@ -110,14 +111,32 @@ fun MapScreen(
         }
     }
 
+    var hasCenteredOnUser by remember { mutableStateOf(false) }
+
     LaunchedEffect(userLocation, isMapLoaded) {
-        if (userLocation != null && isMapLoaded && selectedReport == null && selectedZone == null) {
+        if (!hasCenteredOnUser && userLocation != null && isMapLoaded && selectedReport == null && selectedZone == null && selectedReportId == null) {
             try {
                 cameraPositionState.animate(
                     CameraUpdateFactory.newLatLngZoom(userLocation!!, 14f)
                 )
+                hasCenteredOnUser = true
             } catch (e: Exception) {
                 // Ignore if animation fails
+            }
+        }
+    }
+
+    LaunchedEffect(selectedReportId, reports, isMapLoaded) {
+        if (selectedReportId != null && isMapLoaded && reports.isNotEmpty()) {
+            val report = reports.find { it.id == selectedReportId }
+            if (report != null) {
+                selectedReport = report
+                try {
+                    cameraPositionState.animate(
+                        CameraUpdateFactory.newLatLngZoom(LatLng(report.latitude, report.longitude), 16f)
+                    )
+                } catch (e: Exception) {}
+                viewModel.setSelectedReportId(null)
             }
         }
     }
@@ -246,7 +265,7 @@ fun MapScreen(
             }
         }
 
-        if (!isMapLoaded || isLoading) {
+        if (isLoading) {
             CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
         }
 
@@ -308,7 +327,8 @@ fun MapScreen(
                             snackbarHostState.showSnackbar("Tap a report marker first")
                         }
                     } else {
-                        val uri = Uri.parse("google.navigation:q=${selectedReport!!.latitude},${selectedReport!!.longitude}")
+                        val selected = selectedReport!!
+                        val uri = Uri.parse("google.navigation:q=${selected.latitude},${selected.longitude}")
                         val intent = Intent(Intent.ACTION_VIEW, uri).apply {
                             setPackage("com.google.android.apps.maps")
                         }
@@ -393,7 +413,7 @@ fun MapScreen(
                         context.startActivity(intent)
                     },
                     onTakeCharge = { id -> viewModel.bookCleanup(id) },
-                    onCompleteCleanup = { id, url -> viewModel.completeCleanup(id, url) }
+                    onCompleteCleanup = { id, url -> scope.launch { viewModel.completeCleanup(id, url) } }
                 )
             }
         }
@@ -457,8 +477,12 @@ fun ReportDetailBottomSheet(
                 .height(180.dp)
                 .clip(RoundedCornerShape(12.dp))
         ) {
+            val rawUrl = (if (report.status == "Cleaned") report.cleanedPhotoUrl else report.photoUrl) ?: ""
+            val imgModel = if (rawUrl.startsWith("data:image")) {
+                android.util.Base64.decode(rawUrl.substringAfter("base64,"), android.util.Base64.DEFAULT)
+            } else rawUrl
             AsyncImage(
-                model = if (report.status == "Cleaned") report.cleanedPhotoUrl else report.photoUrl,
+                model = imgModel,
                 contentDescription = "Report image",
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize()

@@ -20,7 +20,7 @@ class AppRepository {
     private val firestore = FirebaseFirestore.getInstance(databaseId)
     private val auth = FirebaseAuth.getInstance()
     
-    private val storage = FirebaseStorage.getInstance("gs://gen-lang-client-0732282076.firebasestorage.app")
+    private val storage = FirebaseStorage.getInstance()
 
     private val reportsCollection = firestore.collection("reports")
     private val usersCollection = firestore.collection("users")
@@ -29,16 +29,27 @@ class AppRepository {
         val fileName = "${UUID.randomUUID()}.jpg"
         val storageRef = storage.reference.child("reports/$fileName")
         
+        // Scale down aggressively for fallback base64
+        val maxDim = 600f
+        val scale = minOf(maxDim / bitmap.width, maxDim / bitmap.height)
+        val scaledBitmap = if (scale < 1) Bitmap.createScaledBitmap(bitmap, (bitmap.width * scale).toInt(), (bitmap.height * scale).toInt(), true) else bitmap
+
         val baos = ByteArrayOutputStream()
-        bitmap.compress(Bitmap.CompressFormat.JPEG, 70, baos)
+        scaledBitmap.compress(Bitmap.CompressFormat.JPEG, 60, baos)
         val data = baos.toByteArray()
         
-        storageRef.putBytes(data).await()
-        return storageRef.downloadUrl.await().toString()
+        return try {
+            storageRef.putBytes(data).await()
+            storageRef.downloadUrl.await().toString()
+        } catch (e: Exception) {
+            // Fallback if Firebase Storage is not configured: save as base64 data URI directly in Firestore
+            val base64 = android.util.Base64.encodeToString(data, android.util.Base64.NO_WRAP)
+            "data:image/jpeg;base64,$base64"
+        }
     }
 
     suspend fun submitReport(report: Report) {
-        val userId = auth.currentUser?.uid ?: return
+        val userId = auth.currentUser?.uid ?: throw Exception("User not authenticated")
         reportsCollection.document(report.id).set(report.copy(reporterId = userId), SetOptions.merge()).await()
         
         updateActivityAndKarma(userId, 10, isReport = true)
@@ -56,7 +67,7 @@ class AppRepository {
     }
 
     suspend fun bookCleanup(reportId: String) {
-        val userId = auth.currentUser?.uid ?: return
+        val userId = auth.currentUser?.uid ?: throw Exception("User not authenticated")
         
         val userDoc = usersCollection.document(userId).get().await()
         val displayName = userDoc.getString("displayName") ?: "Eco Warrior"
@@ -72,7 +83,7 @@ class AppRepository {
     }
 
     suspend fun completeCleanup(reportId: String, cleanedPhotoUrl: String) {
-        val userId = auth.currentUser?.uid ?: return
+        val userId = auth.currentUser?.uid ?: throw Exception("User not authenticated")
         reportsCollection.document(reportId).set(
             mapOf(
                 "status" to "Cleaned", 
@@ -100,7 +111,7 @@ class AppRepository {
     private suspend fun updateActivityAndKarma(userId: String, karmaPoints: Int, isReport: Boolean = false, isCleanup: Boolean = false) {
         val userRef = usersCollection.document(userId)
         val snapshot = userRef.get().await()
-        val profile = snapshot.toObject(UserProfile::class.java) ?: return
+        val profile = snapshot.toObject(UserProfile::class.java) ?: UserProfile(uid = userId)
         
         val now = System.currentTimeMillis()
         val lastActivity = profile.lastActivityTimestamp

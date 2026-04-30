@@ -3,39 +3,59 @@ package com.paryavarankavalu.paryavarankavalu.service
 import android.graphics.Bitmap
 import com.google.ai.client.generativeai.GenerativeModel
 import com.google.ai.client.generativeai.type.content
+import kotlinx.coroutines.withTimeoutOrNull
 
 class AiService(private val apiKey: String) {
-    suspend fun analyzeWaste(imageBitmap: Bitmap): String {
+    suspend fun analyzeWaste(imageBitmap: Bitmap, isCleanup: Boolean = false): String {
         try {
             val generativeModel = GenerativeModel(
                 modelName = "gemini-1.5-flash",
                 apiKey = apiKey
             )
             
-            val prompt = """
+            val prompt = if (isCleanup) {
+                """
+                Analyze this image. Your only task is to check for obvious garbage or waste.
+                If the area looks generally clean, empty, or normal (like an empty floor, street, or desk without trash), return 'Site Cleaned'.
+                If and only if you see a clear pile of untreated garbage, litter, or waste, return 'Needs More Cleaning'.
+                
+                Return EXACTLY ONE of these phrases:
+                - Site Cleaned
+                - Needs More Cleaning
+                
+                Return ONLY the phrase. No other text.
+                """.trimIndent()
+            } else {
+                """
                 You are an expert environmental waste auditor. 
                 Analyze this image and identify the dominant type of waste.
-                Categorize it into exactly one of these labels: Plastic, Organic, E-Waste, Hazardous, or General.
+                Categorize it into exactly one of these labels: Plastic Waste, Bio Waste, Electronic Waste, Hazardous Waste, or General Waste.
                 
                 Rules:
-                - Return ONLY the category name as a single word.
-                - If unsure, return 'General'.
-                - Plastic: bottles, bags, wrappers, etc.
-                - Organic: food, plants, paper (if compostable).
-                - E-Waste: electronics, batteries, cables.
-                - Hazardous: chemicals, medical waste, oils.
-            """.trimIndent()
+                - Return ONLY the category name as a single phrase.
+                - If unsure, return 'General Waste'.
+                - Plastic Waste: bottles, bags, wrappers.
+                - Bio Waste: food, plants, paper.
+                - Electronic Waste: electronics, batteries, cables.
+                - Hazardous Waste: chemicals, medical waste, oils.
+                """.trimIndent()
+            }
             
-            val response = generativeModel.generateContent(
-                content {
-                    image(imageBitmap)
-                    text(prompt)
-                }
-            )
-            return response.text?.trim()?.replace(Regex("[^A-Za-z-]"), "") ?: "General"
+            val response = withTimeoutOrNull(15000L) {
+                generativeModel.generateContent(
+                    content {
+                        image(imageBitmap)
+                        text(prompt)
+                    }
+                )
+            }
+            if (isCleanup) {
+                return response?.text?.trim()?.takeIf { it.contains("Site Cleaned", true) }?.let { "Site Cleaned" } ?: "Needs More Cleaning"
+            }
+            return response?.text?.trim()?.replace(Regex("[^A-Za-z -]"), "") ?: "General Waste"
         } catch (e: Exception) {
             e.printStackTrace()
-            return "General"
+            return if (isCleanup) "Needs More Cleaning" else "General Waste"
         }
     }
 }

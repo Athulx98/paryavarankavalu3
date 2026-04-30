@@ -250,8 +250,12 @@ fun CleanupPost(report: Report, currentUserId: String, onLike: (String) -> Unit)
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text("BEFORE", fontSize = 9.sp, fontWeight = FontWeight.Black, color = Sage400, modifier = Modifier.padding(bottom = 4.dp))
+                    val rawBeforeUrl = report.photoUrl ?: ""
+                    val beforeModel = if (rawBeforeUrl.startsWith("data:image")) {
+                        android.util.Base64.decode(rawBeforeUrl.substringAfter("base64,"), android.util.Base64.DEFAULT)
+                    } else rawBeforeUrl
                     AsyncImage(
-                        model = report.photoUrl,
+                        model = beforeModel,
                         contentDescription = "Before",
                         modifier = Modifier
                             .fillMaxSize()
@@ -261,8 +265,12 @@ fun CleanupPost(report: Report, currentUserId: String, onLike: (String) -> Unit)
                 }
                 Column(modifier = Modifier.weight(1f)) {
                     Text("AFTER", fontSize = 9.sp, fontWeight = FontWeight.Black, color = GreenPrimary, modifier = Modifier.padding(bottom = 4.dp))
+                    val rawAfterUrl = report.cleanedPhotoUrl ?: ""
+                    val afterModel = if (rawAfterUrl.startsWith("data:image")) {
+                        android.util.Base64.decode(rawAfterUrl.substringAfter("base64,"), android.util.Base64.DEFAULT)
+                    } else rawAfterUrl
                     AsyncImage(
-                        model = report.cleanedPhotoUrl,
+                        model = afterModel,
                         contentDescription = "After",
                         modifier = Modifier
                             .fillMaxSize()

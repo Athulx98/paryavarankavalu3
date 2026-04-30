@@ -24,6 +24,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material3.*
@@ -47,6 +48,8 @@ import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.isGranted
 import com.google.accompanist.permissions.rememberPermissionState
 import com.google.android.gms.location.LocationServices
+import com.google.android.gms.location.Priority
+import com.google.android.gms.tasks.CancellationTokenSource
 import com.paryavarankavalu.paryavarankavalu.model.Report
 import com.paryavarankavalu.paryavarankavalu.service.AiService
 import com.paryavarankavalu.paryavarankavalu.ui.theme.*
@@ -87,11 +90,7 @@ fun ReportScreen(
             val bitmap = uriToBitmap(context, it)
             capturedBitmap = bitmap
             step = 2
-            if (!isCleanupMode) {
-                analyzeImage(aiService, bitmap, { wasteType = it }, scope)
-            } else {
-                wasteType = "Site Cleaned"
-            }
+            analyzeImage(aiService, bitmap, { wasteType = it }, scope, isCleanupMode)
         }
     }
 
@@ -99,7 +98,18 @@ fun ReportScreen(
         if (!locationPermissionState.status.isGranted) {
             locationPermissionState.launchPermissionRequest()
         } else {
-            fusedLocationClient.lastLocation.addOnSuccessListener { location ->
+            // Fast fallback to last location first
+            fusedLocationClient.lastLocation.addOnSuccessListener { loc ->
+                loc?.let {
+                    if (userLocation == null) {
+                        userLocation = Pair(it.latitude, it.longitude)
+                        scope.launch { detectedRegion = getAreaName(context, it.latitude, it.longitude) }
+                    }
+                }
+            }
+            // Then try to get high accuracy
+            val cancellationTokenSource = CancellationTokenSource()
+            fusedLocationClient.getCurrentLocation(Priority.PRIORITY_HIGH_ACCURACY, cancellationTokenSource.token).addOnSuccessListener { location ->
                 location?.let { 
                     userLocation = Pair(it.latitude, it.longitude)
                     scope.launch {
@@ -135,11 +145,7 @@ fun ReportScreen(
                     onPhotoCaptured = { bitmap ->
                         capturedBitmap = bitmap
                         step = 2
-                        if (!isCleanupMode) {
-                            analyzeImage(aiService, bitmap, { wasteType = it }, scope)
-                        } else {
-                            wasteType = "Site Cleaned"
-                        }
+                        analyzeImage(aiService, bitmap, { wasteType = it }, scope, isCleanupMode)
                     },
                     onGalleryClick = { galleryLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
                     permissionGranted = cameraPermissionState.status.isGranted,
@@ -152,7 +158,8 @@ fun ReportScreen(
                     locationReady = userLocation != null,
                     regionName = detectedRegion,
                     isCleanupMode = isCleanupMode,
-                    onRetake = { step = 1; capturedBitmap = null; wasteType = if (isCleanupMode) "Verifying..." else "Analyzing..." },
+                    onRetake = { step = 1; isUploading = false; wasteType = if (isCleanupMode) "Verifying Cleanup..." else "Analyzing..." },
+                    onCategoryChange = { newType -> wasteType = newType },
                     onSubmit = {
                         isUploading = true
                         scope.launch {
@@ -176,7 +183,7 @@ fun ReportScreen(
                                 step = 3
                             } catch (e: Exception) {
                                 isUploading = false
-                                Toast.makeText(context, "Upload failed: ${e.message}", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, "Action failed: ${e.message}", Toast.LENGTH_SHORT).show()
                             }
                         }
                     }
@@ -301,8 +308,16 @@ fun AnalysisPreview(
     regionName: String,
     isCleanupMode: Boolean,
     onRetake: () -> Unit,
+    onCategoryChange: (String) -> Unit,
     onSubmit: () -> Unit
 ) {
+    var expanded by remember { mutableStateOf(false) }
+    val options = if (isCleanupMode) {
+        listOf("Site Cleaned", "Needs More Cleaning")
+    } else {
+        listOf("Plastic Waste", "Bio Waste", "Electronic Waste", "Hazardous Waste", "General Waste")
+    }
+
     Column(modifier = Modifier.fillMaxSize().padding(24.dp)) {
         Box(
             modifier = Modifier.weight(1f).fillMaxWidth().clip(RoundedCornerShape(32.dp))
@@ -318,14 +333,21 @@ fun AnalysisPreview(
             
             Surface(
                 modifier = Modifier.padding(16.dp).align(Alignment.TopStart),
-                color = GreenPrimary,
+                color = if (category == "Needs More Cleaning") Color.Red else GreenPrimary,
                 shape = RoundedCornerShape(12.dp)
             ) {
                 Row(modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                    Icon(
+                        if (category == "Needs More Cleaning") Icons.Default.Add else Icons.Default.Check, 
+                        contentDescription = null, 
+                        tint = Color.White, 
+                        modifier = Modifier.size(16.dp)
+                    )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        if (isCleanupMode) "CLEANUP VERIFIED" else "AI CATEGORIZED", 
+                        if (isCleanupMode) {
+                            if (category == "Site Cleaned") "CLEANUP VERIFIED" else "CLEANUP FAILED"
+                        } else "AI CATEGORIZED", 
                         color = Color.White, 
                         fontSize = 10.sp, 
                         fontWeight = FontWeight.Bold
@@ -342,13 +364,34 @@ fun AnalysisPreview(
             colors = CardDefaults.cardColors(containerColor = Sage50)
         ) {
             Column(modifier = Modifier.padding(20.dp)) {
-                Text(
-                    if (isCleanupMode) "Status" else "Detected Category", 
-                    color = Sage400, 
-                    fontSize = 12.sp, 
-                    fontWeight = FontWeight.Bold
-                )
-                Text(category.uppercase(), color = Forest900, fontSize = 24.sp, fontWeight = FontWeight.Black)
+                Box {
+                    Column {
+                        Text(
+                            if (isCleanupMode) "Status" else "Detected Category", 
+                            color = Sage400, 
+                            fontSize = 12.sp, 
+                            fontWeight = FontWeight.Bold
+                        )
+                        Row(modifier = Modifier.clickable { expanded = true }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text(category.uppercase(), color = Forest900, fontSize = 22.sp, fontWeight = FontWeight.Black)
+                            Icon(Icons.Default.ArrowDropDown, contentDescription = "Change", tint = Forest900)
+                        }
+                    }
+                    DropdownMenu(
+                        expanded = expanded,
+                        onDismissRequest = { expanded = false }
+                    ) {
+                        options.forEach { option ->
+                            DropdownMenuItem(
+                                text = { Text(option) },
+                                onClick = { 
+                                    onCategoryChange(option)
+                                    expanded = false
+                                }
+                            )
+                        }
+                    }
+                }
                 
                 Spacer(modifier = Modifier.height(16.dp))
                 
@@ -385,8 +428,8 @@ fun AnalysisPreview(
                 onClick = onSubmit,
                 modifier = Modifier.weight(1.5f).height(64.dp),
                 shape = RoundedCornerShape(20.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = GreenPrimary),
-                enabled = !isUploading && (category != "Analyzing..." && category != "Verifying Cleanup...")
+                colors = ButtonDefaults.buttonColors(containerColor = if (isCleanupMode && category == "Needs More Cleaning") Color.Gray else GreenPrimary),
+                enabled = !isUploading && locationReady && (category != "Analyzing..." && category != "Verifying Cleanup...") && (!isCleanupMode || category == "Site Cleaned")
             ) {
                 if (isUploading) {
                     CircularProgressIndicator(color = Color.White, modifier = Modifier.size(24.dp))
@@ -440,9 +483,9 @@ fun SuccessView(isCleanupMode: Boolean = false, onFinish: () -> Unit) {
 }
 
 // Helpers
-private fun analyzeImage(aiService: AiService, bitmap: Bitmap, onResult: (String) -> Unit, scope: kotlinx.coroutines.CoroutineScope) {
+private fun analyzeImage(aiService: AiService, bitmap: Bitmap, onResult: (String) -> Unit, scope: kotlinx.coroutines.CoroutineScope, isCleanup: Boolean = false) {
     scope.launch {
-        val result = aiService.analyzeWaste(bitmap)
+        val result = aiService.analyzeWaste(bitmap, isCleanup)
         onResult(result)
     }
 }
@@ -460,17 +503,19 @@ private fun ImageProxy.toBitmap(): Bitmap {
 }
 
 private suspend fun getAreaName(context: Context, lat: Double, lon: Double): String {
-    return withContext(Dispatchers.IO) {
+    return kotlinx.coroutines.withContext(Dispatchers.IO) {
         try {
-            val geocoder = Geocoder(context, Locale.getDefault())
-            @Suppress("DEPRECATION")
-            val addresses = geocoder.getFromLocation(lat, lon, 1)
-            if (!addresses.isNullOrEmpty()) {
-                val address = addresses[0]
-                address.subLocality ?: address.locality ?: "Unknown Area"
-            } else {
-                "Unknown Area"
-            }
+            kotlinx.coroutines.withTimeoutOrNull(5000L) {
+                val geocoder = Geocoder(context, Locale.getDefault())
+                @Suppress("DEPRECATION")
+                val addresses = geocoder.getFromLocation(lat, lon, 1)
+                if (!addresses.isNullOrEmpty()) {
+                    val address = addresses[0]
+                    address.subLocality ?: address.locality ?: "Unknown Area"
+                } else {
+                    "Unknown Area"
+                }
+            } ?: "Unknown Area"
         } catch (e: Exception) {
             "Unknown Area"
         }

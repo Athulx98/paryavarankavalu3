@@ -162,14 +162,8 @@ class MainViewModel : ViewModel() {
         return repository.uploadImage(bitmap)
     }
 
-    fun submitReport(report: Report) {
-        viewModelScope.launch { 
-            try {
-                repository.submitReport(report)
-            } catch (e: Exception) {
-                Log.e("MainViewModel", "Error submitting report", e)
-            }
-        }
+    suspend fun submitReport(report: Report) {
+        repository.submitReport(report)
     }
 
     fun createUserProfile(uid: String, email: String, displayName: String) {
@@ -222,13 +216,7 @@ class MainViewModel : ViewModel() {
         }
     }
 
-    fun completeCleanup(reportId: String, photoUrl: String) {
-        viewModelScope.launch { 
-            try {
-                repository.completeCleanup(reportId, photoUrl)
-            } catch (e: Exception) {
-                Log.e("MainViewModel", "Error completing cleanup", e)
-            }
-        }
+    suspend fun completeCleanup(reportId: String, photoUrl: String) {
+        repository.completeCleanup(reportId, photoUrl)
     }
 }

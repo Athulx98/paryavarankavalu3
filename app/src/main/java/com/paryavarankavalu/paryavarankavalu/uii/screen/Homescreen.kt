@@ -12,10 +12,16 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
+import android.Manifest
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalContext
+import com.google.accompanist.permissions.ExperimentalPermissionsApi
+import com.google.accompanist.permissions.isGranted
+import com.google.accompanist.permissions.rememberPermissionState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
@@ -34,14 +40,31 @@ import com.paryavarankavalu.paryavarankavalu.viewmodel.MainViewModel
 import java.text.SimpleDateFormat
 import java.util.*
 
+@OptIn(ExperimentalPermissionsApi::class)
 @Composable
 fun HomeScreen(navController: NavController, viewModel: MainViewModel = viewModel()) {
+    val locationPermissionState = rememberPermissionState(Manifest.permission.ACCESS_FINE_LOCATION)
+    val context = LocalContext.current
+
+    LaunchedEffect(Unit) {
+        if (!locationPermissionState.status.isGranted) {
+            locationPermissionState.launchPermissionRequest()
+        } else {
+            viewModel.startLocationTracking(context)
+        }
+    }
+
+    LaunchedEffect(locationPermissionState.status.isGranted) {
+        if (locationPermissionState.status.isGranted) {
+            viewModel.startLocationTracking(context)
+        }
+    }
     val userProfile by viewModel.userProfile.collectAsState()
     val reports by viewModel.reports.collectAsState()
 
     // Filter reports for different sections
     val myTasks = reports.filter { it.cleanerId == userProfile?.uid && it.status == "Assigned" }
-    val recentReports = reports.filter { it.status == "Reported" }.sortedByDescending { it.timestamp }
+    val recentReports = reports.sortedByDescending { it.timestamp }
 
     Scaffold(
         containerColor = Sage50
@@ -146,7 +169,11 @@ fun HomeScreen(navController: NavController, viewModel: MainViewModel = viewMode
                         report = report,
                         userProfile = userProfile,
                         onBookClick = { id -> viewModel.bookCleanup(id) },
-                        onUploadProof = { id -> navController.navigate("report?reportId=$id") }
+                        onUploadProof = { id -> navController.navigate("report?reportId=$id") },
+                        onCardClick = { 
+                            viewModel.setSelectedReportId(report.id)
+                            navController.navigate("map")
+                        }
                     )
                 }
             }
@@ -167,8 +194,11 @@ fun TaskSmallCard(report: Report, onClick: () -> Unit) {
         shadowElevation = 4.dp
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
+            val imgModel = if (report.photoUrl.startsWith("data:image")) {
+                android.util.Base64.decode(report.photoUrl.substringAfter("base64,"), android.util.Base64.DEFAULT)
+            } else report.photoUrl
             AsyncImage(
-                model = report.photoUrl,
+                model = imgModel,
                 contentDescription = null,
                 modifier = Modifier
                     .fillMaxWidth()
@@ -300,10 +330,11 @@ fun ReportCard(
     report: Report, 
     userProfile: UserProfile?, 
     onBookClick: (String) -> Unit,
-    onUploadProof: (String) -> Unit = {}
+    onUploadProof: (String) -> Unit = {},
+    onCardClick: () -> Unit = {}
 ) {
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().clickable { onCardClick() },
         shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(containerColor = Color.White),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
@@ -318,8 +349,12 @@ fun ReportCard(
                 shape = RoundedCornerShape(16.dp),
                 color = Sage50
             ) {
+                val rawUrl = if (report.status == "Cleaned") report.cleanedPhotoUrl ?: "" else report.photoUrl
+                val imgModel = if (rawUrl.startsWith("data:image")) {
+                    android.util.Base64.decode(rawUrl.substringAfter("base64,"), android.util.Base64.DEFAULT)
+                } else rawUrl
                 AsyncImage(
-                    model = if (report.status == "Cleaned") report.cleanedPhotoUrl else report.photoUrl,
+                    model = imgModel,
                     contentDescription = null,
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Crop
