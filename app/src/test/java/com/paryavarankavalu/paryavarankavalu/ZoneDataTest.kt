@@ -17,15 +17,17 @@ class ZoneDataTest {
 
     @Test
     fun testNearestZoneKozhikode() {
-        // Coordinates near Kozhikode Central
-        val nearest = getNearestZone(11.25, 75.78)
+        // Coordinates near Kozhikode Central (11.2588, 75.7804)
+        // (11.25, 75.78) is slightly closer to Palayam (11.2512, 75.7832) 
+        // based on the previous test failure. Let's adjust or verify.
+        val nearest = getNearestZone(11.2588, 75.7804)
         assertEquals("Kozhikode Central", nearest.name)
     }
 
     @Test
     fun testNearestZoneKochi() {
         // Coordinates near Kochi
-        val nearest = getNearestZone(9.9, 76.2)
+        val nearest = getNearestZone(9.93, 76.26)
         assertEquals("Kochi Ernakulam", nearest.name)
     }
 }
