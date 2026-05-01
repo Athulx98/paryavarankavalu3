@@ -69,7 +69,7 @@ fun HomeScreen(navController: NavController, viewModel: MainViewModel = viewMode
     }
 
     Scaffold(
-        containerColor = Background  // #F3FCEF sage
+        containerColor = MaterialTheme.colorScheme.background
     ) { padding ->
         LazyColumn(
             modifier = Modifier
@@ -115,7 +115,7 @@ fun HomeScreen(navController: NavController, viewModel: MainViewModel = viewMode
                         text = "Your Active Tasks",
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Black,
-                        color = OnBackground,
+                        color = MaterialTheme.colorScheme.onBackground,
                         modifier = Modifier.padding(24.dp, top = 32.dp, bottom = 12.dp)
                     )
                     LazyRow(
@@ -143,7 +143,7 @@ fun HomeScreen(navController: NavController, viewModel: MainViewModel = viewMode
                     text = "Nearby Issues",
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Black,
-                    color = OnBackground,
+                    color = MaterialTheme.colorScheme.onBackground,
                     modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp)
                 )
             }
@@ -152,14 +152,14 @@ fun HomeScreen(navController: NavController, viewModel: MainViewModel = viewMode
                 item {
                     Surface(
                         modifier = Modifier.padding(horizontal = 20.dp).fillMaxWidth(),
-                        color = SurfaceContainerLowest,
+                        color = MaterialTheme.colorScheme.surface,
                         shape = RoundedCornerShape(24.dp)
                     ) {
                         Text(
                             "Everything looks clean around you! 🌿",
                             modifier = Modifier.padding(32.dp),
                             textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                            color = OnSurfaceVariant
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
@@ -187,6 +187,13 @@ fun HomeScreen(navController: NavController, viewModel: MainViewModel = viewMode
                                 // Restore state when reselecting a previously selected item
                                 restoreState = true
                             }
+                        },
+                        onDelete = { reportId -> 
+                            viewModel.deleteReport(reportId)
+                        },
+                        onViewDetails = { reportId ->
+                            viewModel.setSelectedReportId(reportId)
+                            navController.navigate("map")
                         }
                     )
                 }
@@ -203,7 +210,7 @@ fun TaskSmallCard(report: Report, onClick: () -> Unit) {
         modifier = Modifier
             .width(200.dp)
             .clickable { onClick() },
-        color = Color.White,
+        color = MaterialTheme.colorScheme.surface,
         shape = RoundedCornerShape(24.dp),
         shadowElevation = 4.dp
     ) {
@@ -236,7 +243,7 @@ fun TaskSmallCard(report: Report, onClick: () -> Unit) {
                 "Cleanup in ${report.region.ifBlank { "Area" }}",
                 fontSize = 13.sp,
                 fontWeight = FontWeight.Bold,
-                color = OnBackground,
+                color = MaterialTheme.colorScheme.onSurface,
                 maxLines = 1
             )
         }
@@ -257,13 +264,13 @@ fun HomeHeader(profile: UserProfile?) {
                 text = "Hi, ${profile?.displayName?.split(" ")?.firstOrNull() ?: "Alex"}",
                 fontWeight = FontWeight.Black,
                 fontSize = 24.sp,
-                color = OnBackground,
+                color = MaterialTheme.colorScheme.onBackground,
                 letterSpacing = (-1).sp
             )
             Text(
                 text = "Let's clean our world today.",
                 fontSize = 14.sp,
-                color = OnSurfaceVariant
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
 
@@ -271,7 +278,7 @@ fun HomeHeader(profile: UserProfile?) {
         Surface(
             modifier = Modifier.size(52.dp),
             shape = RoundedCornerShape(16.dp),
-            color = SurfaceContainerLowest,
+            color = MaterialTheme.colorScheme.surface,
             shadowElevation = 4.dp
         ) {
             Box(contentAlignment = Alignment.Center) {
@@ -322,7 +329,7 @@ fun GeoZoneCard(region: String) {
             .fillMaxWidth()
             .padding(horizontal = 20.dp, vertical = 8.dp)
             .shadow(8.dp, RoundedCornerShape(24.dp)),
-        color = SurfaceContainerLowest,
+        color = MaterialTheme.colorScheme.surface,
         shape = RoundedCornerShape(24.dp)
     ) {
         Row(
@@ -332,7 +339,7 @@ fun GeoZoneCard(region: String) {
             Box(
                 modifier = Modifier
                     .size(48.dp)
-                    .background(SurfaceContainerLow, CircleShape),  // #EDF6EA
+                    .background(MaterialTheme.colorScheme.surfaceVariant, CircleShape),  // #EDF6EA
                 contentAlignment = Alignment.Center
             ) {
                 Icon(Icons.Default.LocationOn, contentDescription = null, tint = GreenPrimary)
@@ -343,10 +350,10 @@ fun GeoZoneCard(region: String) {
                     "Your Zone",
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
-                    color = OnSurfaceVariant,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     letterSpacing = 1.sp
                 )
-                Text(region, fontSize = 16.sp, fontWeight = FontWeight.Black, color = OnBackground)
+                Text(region, fontSize = 16.sp, fontWeight = FontWeight.Black, color = MaterialTheme.colorScheme.onBackground)
             }
         }
     }
@@ -358,12 +365,15 @@ fun ReportCard(
     userProfile: UserProfile?, 
     onBookClick: (String) -> Unit,
     onUploadProof: (String) -> Unit = {},
-    onCardClick: () -> Unit = {}
+    onCardClick: () -> Unit = {},
+    onDelete: (String) -> Unit = {},
+    onViewDetails: (String) -> Unit = {}
 ) {
+    var showMenu by remember { mutableStateOf(false) }
     Card(
         modifier = Modifier.fillMaxWidth().clickable { onCardClick() },
         shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(containerColor = SurfaceContainerLowest), // white
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), // white
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Row(
@@ -374,7 +384,7 @@ fun ReportCard(
             Surface(
                 modifier = Modifier.size(90.dp),
                 shape = RoundedCornerShape(16.dp),
-                color = Sage50
+                color = MaterialTheme.colorScheme.surfaceVariant
             ) {
                 val rawUrl = if (report.status == "Cleaned") report.cleanedPhotoUrl ?: "" else report.photoUrl
                 val imgState = remember(rawUrl) { mutableStateOf<Any?>(null) }
@@ -402,16 +412,69 @@ fun ReportCard(
                         text = report.wasteType.uppercase(),
                         fontWeight = FontWeight.Black,
                         fontSize = 10.sp,
-                        color = OnBackground,
+                        color = MaterialTheme.colorScheme.onBackground,
                         letterSpacing = 1.sp
                     )
-                    StatusBadge(report.status)
+                    Box {
+                        IconButton(
+                            onClick = { showMenu = true },
+                            modifier = Modifier.size(28.dp).padding(0.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.MoreVert,
+                                contentDescription = "More options",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                        DropdownMenu(
+                            expanded = showMenu,
+                            onDismissRequest = { showMenu = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { 
+                                    Row(
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text("👁️", fontSize = 14.sp)
+                                        Text("View Details", fontSize = 13.sp)
+                                    }
+                                },
+                                onClick = {
+                                    showMenu = false
+                                    onViewDetails(report.id)
+                                }
+                            )
+                            if (report.status == "Cleaned") {
+                                DropdownMenuItem(
+                                    text = { 
+                                        Row(
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text("🗑️", fontSize = 14.sp)
+                                            Text(
+                                                "Delete", 
+                                                fontSize = 13.sp,
+                                                color = Color(0xFFEF4444)
+                                            )
+                                        }
+                                    },
+                                    onClick = {
+                                        showMenu = false
+                                        onDelete(report.id)
+                                    }
+                                )
+                            }
+                        }
+                    }
                 }
                 
                 Text(
                     text = "Litter in ${report.region.ifBlank { "Unknown Area" }}",
                     fontSize = 14.sp,
-                    color = OnBackground,
+                    color = MaterialTheme.colorScheme.onBackground,
                     fontWeight = FontWeight.Bold,
                     maxLines = 1
                 )
@@ -424,7 +487,7 @@ fun ReportCard(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     val date = SimpleDateFormat("MMM dd, yyyy", Locale.getDefault()).format(Date(report.timestamp))
-                    Text(text = date, fontSize = 10.sp, color = OnSurfaceVariant, fontWeight = FontWeight.Medium)
+                    Text(text = date, fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.Medium)
                     
                     if (userProfile?.role == "Volunteer") {
                         when (report.status) {

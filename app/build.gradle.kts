@@ -75,6 +75,7 @@ dependencies {
     implementation(libs.firebase.auth)
     implementation(libs.firebase.firestore)
     implementation(libs.firebase.storage)
+    implementation(libs.firebase.messaging)
 
     // Maps & Location
     implementation(libs.google.maps)

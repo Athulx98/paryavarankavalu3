@@ -47,7 +47,7 @@ fun ProfileScreen(navController: NavController, viewModel: MainViewModel = viewM
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Sage50)
+            .background(MaterialTheme.colorScheme.background)
     ) {
         // Top Profile Section
         Box(
@@ -98,7 +98,7 @@ fun ProfileScreen(navController: NavController, viewModel: MainViewModel = viewM
             modifier = Modifier
                 .fillMaxSize()
                 .offset(y = (-24).dp)
-                .background(Sage50, RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp))
+                .background(MaterialTheme.colorScheme.background, RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp))
                 .padding(horizontal = 24.dp)
         ) {
             item { Spacer(modifier = Modifier.height(32.dp)) }
@@ -118,7 +118,7 @@ fun ProfileScreen(navController: NavController, viewModel: MainViewModel = viewM
                 Spacer(modifier = Modifier.height(16.dp))
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
-                    color = Color.White,
+                    color = MaterialTheme.colorScheme.surface,
                     shape = RoundedCornerShape(24.dp),
                     shadowElevation = 2.dp
                 ) {
@@ -134,8 +134,8 @@ fun ProfileScreen(navController: NavController, viewModel: MainViewModel = viewM
                         }
                         Spacer(modifier = Modifier.width(16.dp))
                         Column {
-                            Text("${userProfile?.streak ?: 0} Day Streak", fontWeight = FontWeight.Black, fontSize = 18.sp, color = Forest900)
-                            Text("Keep active to grow your streak!", fontSize = 12.sp, color = Sage400)
+                            Text("${userProfile?.streak ?: 0} Day Streak", fontWeight = FontWeight.Black, fontSize = 18.sp, color = MaterialTheme.colorScheme.onSurface)
+                            Text("Keep active to grow your streak!", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                 }
@@ -146,7 +146,7 @@ fun ProfileScreen(navController: NavController, viewModel: MainViewModel = viewM
                 Spacer(modifier = Modifier.height(16.dp))
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
-                    color = Forest900,
+                    color = MaterialTheme.colorScheme.inverseSurface,
                     shape = RoundedCornerShape(24.dp)
                 ) {
                     Row(
@@ -183,12 +183,56 @@ fun ProfileScreen(navController: NavController, viewModel: MainViewModel = viewM
                 }
             }
 
+            // Dark Mode Toggle Section
+            item {
+                val isDarkMode by viewModel.isDarkMode.collectAsState()
+                Spacer(modifier = Modifier.height(16.dp))
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    color = if (isDarkMode == true) GreenPrimary else Color.White,
+                    shape = RoundedCornerShape(24.dp),
+                    shadowElevation = 2.dp
+                ) {
+                    Row(
+                        modifier = Modifier.padding(20.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Dark Mode",
+                                color = if (isDarkMode == true) Color.White else Forest900,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 16.sp
+                            )
+                            Text(
+                                text = "Switch to a darker theme",
+                                color = if (isDarkMode == true) Color.White.copy(alpha = 0.7f) else Sage400,
+                                fontSize = 12.sp
+                            )
+                        }
+                        Switch(
+                            checked = isDarkMode == true,
+                            onCheckedChange = { isChecked ->
+                                viewModel.setDarkMode(isChecked)
+                            },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = Color.White,
+                                checkedTrackColor = Color.White.copy(alpha = 0.3f),
+                                uncheckedThumbColor = GreenPrimary,
+                                uncheckedTrackColor = GreenLight
+                            )
+                        )
+                    }
+                }
+            }
+
             item {
                 Text(
                     text = "My Contribution",
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Black,
-                    color = Forest900,
+                    color = MaterialTheme.colorScheme.onBackground,
                     modifier = Modifier.padding(top = 32.dp, bottom = 16.dp)
                 )
             }
@@ -197,13 +241,13 @@ fun ProfileScreen(navController: NavController, viewModel: MainViewModel = viewM
                 item {
                     Surface(
                         modifier = Modifier.fillMaxWidth(),
-                        color = Color.White,
+                        color = MaterialTheme.colorScheme.surface,
                         shape = RoundedCornerShape(24.dp)
                     ) {
                         Text(
                             "You haven't reported any litter yet. Start making an impact!",
                             modifier = Modifier.padding(24.dp),
-                            color = Sage400,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             fontSize = 14.sp
                         )
                     }
@@ -225,6 +269,13 @@ fun ProfileScreen(navController: NavController, viewModel: MainViewModel = viewM
                                 launchSingleTop = true
                                 restoreState = true
                             }
+                        },
+                        onDelete = { reportId -> 
+                            viewModel.deleteReport(reportId)
+                        },
+                        onViewDetails = { reportId ->
+                            viewModel.setSelectedReportId(reportId)
+                            navController.navigate("map")
                         }
                     )
                 }
@@ -235,7 +286,7 @@ fun ProfileScreen(navController: NavController, viewModel: MainViewModel = viewM
                     text = "Top Contributors",
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Black,
-                    color = Forest900,
+                    color = MaterialTheme.colorScheme.onBackground,
                     modifier = Modifier.padding(top = 32.dp, bottom = 16.dp)
                 )
             }
@@ -245,7 +296,7 @@ fun ProfileScreen(navController: NavController, viewModel: MainViewModel = viewM
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(vertical = 4.dp),
-                    color = SurfaceContainerLowest,
+                    color = MaterialTheme.colorScheme.surface,
                     shape = RoundedCornerShape(16.dp),
                     shadowElevation = 1.dp
                 ) {
@@ -258,27 +309,27 @@ fun ProfileScreen(navController: NavController, viewModel: MainViewModel = viewM
                             text = "#$rank",
                             fontWeight = FontWeight.Black,
                             fontSize = 14.sp,
-                            color = if (rank <= 3) GreenPrimary else OnSurfaceVariant,
+                            color = if (rank <= 3) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.width(32.dp)
                         )
                         Box(
                             modifier = Modifier
                                 .size(36.dp)
-                                .background(SurfaceContainerLow, CircleShape),
+                                .background(MaterialTheme.colorScheme.surfaceVariant, CircleShape),
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
                                 user.displayName.firstOrNull()?.toString() ?: "U",
                                 fontWeight = FontWeight.Bold,
-                                color = OnBackground,
+                                color = MaterialTheme.colorScheme.onSurface,
                                 fontSize = 14.sp
                             )
                         }
                         Spacer(modifier = Modifier.width(12.dp))
                         Column(modifier = Modifier.weight(1f)) {
                             Text(user.displayName, fontWeight = FontWeight.Bold,
-                                color = OnBackground, fontSize = 13.sp)
-                            Text("${user.ecoKarma} karma", fontSize = 11.sp, color = OnSurfaceVariant)
+                                color = MaterialTheme.colorScheme.onSurface, fontSize = 13.sp)
+                            Text("${user.ecoKarma} karma", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                 }
@@ -286,6 +337,9 @@ fun ProfileScreen(navController: NavController, viewModel: MainViewModel = viewM
 
             item {
                 Spacer(modifier = Modifier.height(32.dp))
+                ProfileMenuItem("Notifications", Icons.Default.Notifications) {
+                    navController.navigate("notification_settings")
+                }
                 ProfileMenuItem("Settings", Icons.Default.Settings)
                 ProfileMenuItem("Help & Feedback", Icons.Default.Info)
                 ProfileMenuItem("Logout", Icons.AutoMirrored.Filled.ExitToApp, color = Color.Red) {
@@ -304,13 +358,13 @@ fun ProfileScreen(navController: NavController, viewModel: MainViewModel = viewM
 fun ProfileStatSmall(modifier: Modifier, label: String, value: String, color: Color) {
     Surface(
         modifier = modifier,
-        color = Color.White,
+        color = MaterialTheme.colorScheme.surface,
         shape = RoundedCornerShape(24.dp),
         shadowElevation = 2.dp
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            Text(label, fontSize = 12.sp, color = Sage400, fontWeight = FontWeight.Bold)
-            Text(value, fontSize = 20.sp, fontWeight = FontWeight.Black, color = Forest900)
+            Text(label, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.Bold)
+            Text(value, fontSize = 20.sp, fontWeight = FontWeight.Black, color = MaterialTheme.colorScheme.onSurface)
         }
     }
 }
@@ -322,20 +376,20 @@ fun ProfileMenuItem(label: String, icon: ImageVector, color: Color = Forest900, 
             .fillMaxWidth()
             .padding(vertical = 6.dp)
             .clickable { onClick() },
-        color = Color.White,
+        color = MaterialTheme.colorScheme.surface,
         shape = RoundedCornerShape(16.dp)
     ) {
         Row(
             modifier = Modifier.padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Box(modifier = Modifier.size(40.dp).background(Sage50, CircleShape), contentAlignment = Alignment.Center) {
+            Box(modifier = Modifier.size(40.dp).background(MaterialTheme.colorScheme.surfaceVariant, CircleShape), contentAlignment = Alignment.Center) {
                 Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(20.dp))
             }
             Spacer(modifier = Modifier.width(16.dp))
-            Text(label, fontWeight = FontWeight.Bold, color = color)
+            Text(label, fontWeight = FontWeight.Bold, color = if (color == Forest900) MaterialTheme.colorScheme.onSurface else color)
             Spacer(modifier = Modifier.weight(1f))
-            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = Sage400, modifier = Modifier.size(16.dp))
+            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(16.dp))
         }
     }
 }

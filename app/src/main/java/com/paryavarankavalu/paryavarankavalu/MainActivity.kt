@@ -1,6 +1,7 @@
 package com.paryavarankavalu.paryavarankavalu
 
 import android.os.Bundle
+import android.os.Build
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
@@ -22,6 +23,8 @@ import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
@@ -58,6 +61,14 @@ class MainActivity : ComponentActivity() {
         
         val viewModel = ViewModelProvider(this)[MainViewModel::class.java]
         
+        // Request notification permission for Android 13+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            val permission = android.Manifest.permission.POST_NOTIFICATIONS
+            if (checkSelfPermission(permission) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(arrayOf(permission), 101)
+            }
+        }
+
         // Start tracking early to satisfy splash readiness
         viewModel.startLocationTracking(this)
         
@@ -70,8 +81,14 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             val isReady by viewModel.isReady.collectAsState()
+            val isDarkMode by viewModel.isDarkMode.collectAsState()
             
-            ParyavaranKavaluTheme {
+            // Initialize theme preferences
+            viewModel.initTheme(LocalContext.current)
+            
+            val useDarkTheme = isDarkMode ?: isSystemInDarkTheme()
+            
+            ParyavaranKavaluTheme(darkTheme = useDarkTheme) {
                 if (!isReady) {
                     SplashScreenContent()
                 } else {
@@ -137,6 +154,7 @@ fun AppMain(startDest: String, viewModel: MainViewModel = viewModel()) {
             composable("map") { MapScreen(navController, viewModel) }
             composable("community") { CommunityScreen(navController, viewModel) }
             composable("profile") { ProfileScreen(navController, viewModel) }
+            composable("notification_settings") { NotificationSettingsScreen(navController, viewModel) }
         }
     }
 }
@@ -150,7 +168,7 @@ fun CustomBottomBar(onNavigate: (String) -> Unit, currentRoute: String) {
             .padding(horizontal = 20.dp, vertical = 12.dp)
             .shadow(12.dp, RoundedCornerShape(28.dp))
             .clip(RoundedCornerShape(28.dp)),
-        color = SurfaceContainerLowest  // #FFFFFF
+        color = MaterialTheme.colorScheme.surface
     ) {
         Row(
             modifier = Modifier
@@ -169,7 +187,7 @@ fun CustomBottomBar(onNavigate: (String) -> Unit, currentRoute: String) {
                     .size(56.dp)
                     .shadow(6.dp, CircleShape)
                     .clip(CircleShape)
-                    .background(GreenPrimaryContainer)   // #22C55E
+                    .background(MaterialTheme.colorScheme.primaryContainer)
                     .clickable { onNavigate("report") },
                 contentAlignment = Alignment.Center
             ) {

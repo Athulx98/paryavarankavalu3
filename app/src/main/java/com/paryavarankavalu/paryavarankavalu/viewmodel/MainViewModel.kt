@@ -18,6 +18,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
+import android.content.SharedPreferences
+import com.google.firebase.messaging.FirebaseMessaging
 
 class MainViewModel : ViewModel() {
     private val repository = AppRepository()
@@ -58,12 +60,18 @@ class MainViewModel : ViewModel() {
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error
 
+    private val _isDarkMode = MutableStateFlow<Boolean?>(null)
+    val isDarkMode: StateFlow<Boolean?> = _isDarkMode
+
+    private var prefs: SharedPreferences? = null
+
     init {
         repository.observeReports { newReports ->
             _reports.value = newReports
         }
 
         auth.currentUser?.uid?.let { uid ->
+            fetchAndSaveFcmToken()
             repository.observeUserProfile(uid) { profile ->
                 _userProfile.value = profile
                 checkReadyStatus()
@@ -85,6 +93,27 @@ class MainViewModel : ViewModel() {
                 _isReady.value = true
             }
         }
+    }
+
+    fun initTheme(context: Context) {
+        if (prefs == null) {
+            prefs = context.getSharedPreferences("theme_prefs", Context.MODE_PRIVATE)
+            val themeVal = prefs?.getInt("dark_mode", 0) ?: 0 // 0=auto, 1=light, 2=dark
+            _isDarkMode.value = when(themeVal) {
+                1 -> false
+                2 -> true
+                else -> null
+            }
+        }
+    }
+
+    fun setDarkMode(enabled: Boolean?) {
+        _isDarkMode.value = enabled
+        prefs?.edit()?.putInt("dark_mode", when(enabled) {
+            false -> 1
+            true -> 2
+            null -> 0
+        })?.apply()
     }
 
     fun startLocationTracking(context: Context) {
@@ -223,8 +252,43 @@ class MainViewModel : ViewModel() {
         }
     }
 
+    fun deleteReport(reportId: String) {
+        viewModelScope.launch {
+            try {
+                repository.deleteReport(reportId)
+            } catch (e: Exception) {
+                Log.e("MainViewModel", "Delete failed: ${e.message}")
+            }
+        }
+    }
+
     suspend fun completeCleanup(reportId: String, photoUrl: String) {
         repository.completeCleanup(reportId, photoUrl)
+    }
+
+    fun updateNotificationSettings(enabled: Boolean, sound: String, vibration: Boolean) {
+        viewModelScope.launch {
+            try {
+                repository.updateNotificationSettings(enabled, sound, vibration)
+            } catch (e: Exception) {
+                Log.e("MainViewModel", "Error updating notification settings", e)
+            }
+        }
+    }
+
+    private fun fetchAndSaveFcmToken() {
+        FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
+            if (task.isSuccessful) {
+                val token = task.result
+                viewModelScope.launch {
+                    try {
+                        repository.updateFcmToken(token)
+                    } catch (e: Exception) {
+                        Log.e("MainViewModel", "Error saving FCM token", e)
+                    }
+                }
+            }
+        }
     }
 
     private fun checkReadyStatus() {

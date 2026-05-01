@@ -1,3 +1,4 @@
 <resources>
-    <string name="app_name">paryavarankavalu</string>
+    <string name="app_name">Paryavaran Kavalu</string>
+    <string name="default_notification_channel_id">paryavaran_reports_channel</string>
 </resources>

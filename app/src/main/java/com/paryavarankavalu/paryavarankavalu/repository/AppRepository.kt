@@ -86,6 +86,10 @@ class AppRepository {
         ).await()
     }
 
+    suspend fun deleteReport(reportId: String) {
+        reportsCollection.document(reportId).delete().await()
+    }
+
     suspend fun completeCleanup(reportId: String, cleanedPhotoUrl: String) {
         val userId = auth.currentUser?.uid ?: throw Exception("User not authenticated")
         reportsCollection.document(reportId).set(
@@ -173,6 +177,22 @@ class AppRepository {
             "updatedAt" to System.currentTimeMillis()
         )
         usersCollection.document(userId).set(updates, SetOptions.merge()).await()
+    }
+
+    suspend fun updateNotificationSettings(enabled: Boolean, sound: String, vibration: Boolean) {
+        val userId = auth.currentUser?.uid ?: return
+        val updates = mapOf(
+            "pushNotificationsEnabled" to enabled,
+            "notificationSound" to sound,
+            "vibrationEnabled" to vibration,
+            "updatedAt" to System.currentTimeMillis()
+        )
+        usersCollection.document(userId).set(updates, SetOptions.merge()).await()
+    }
+
+    suspend fun updateFcmToken(token: String) {
+        val userId = auth.currentUser?.uid ?: return
+        usersCollection.document(userId).update("fcmToken", token).await()
     }
 
     fun observeReports(onUpdate: (List<Report>) -> Unit) {
