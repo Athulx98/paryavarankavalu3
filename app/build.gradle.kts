@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -22,7 +24,19 @@ android {
         vectorDrawables {
             useSupportLibrary = true
         }
-        buildConfigField("String", "GEMINI_API_KEY", "\"${project.findProperty("GEMINI_API_KEY") ?: ""}\"")
+
+        // Load properties from local.properties
+        val properties = Properties()
+        val localPropertiesFile = project.rootProject.file("local.properties")
+        if (localPropertiesFile.exists()) {
+            properties.load(localPropertiesFile.inputStream())
+        }
+
+        val geminiKey = properties.getProperty("GEMINI_API_KEY") ?: project.findProperty("GEMINI_API_KEY") as String? ?: ""
+        val mapsKey = properties.getProperty("MAPS_API_KEY") ?: project.findProperty("MAPS_API_KEY") as String? ?: ""
+
+        buildConfigField("String", "GEMINI_API_KEY", "\"$geminiKey\"")
+        manifestPlaceholders["MAPS_API_KEY"] = mapsKey
     }
 
     buildTypes {
@@ -110,6 +124,10 @@ dependencies {
 
     // Gemini AI
     implementation(libs.google.generativeai)
+
+    // ML Kit
+    implementation(libs.mlkit.image.labeling)
+    implementation(libs.mlkit.objectdetection)
 
     testImplementation(libs.junit)
     testImplementation(libs.robolectric)

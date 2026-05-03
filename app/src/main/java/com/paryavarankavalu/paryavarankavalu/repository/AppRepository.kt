@@ -95,6 +95,7 @@ class AppRepository(private val reportDao: ReportDao) {
         reportsCollection.document(id).set(mapOf(
             "status" to "Assigned", 
             "cleanerId" to userId,
+            "assignedTo" to userId,
             "timestamp" to System.currentTimeMillis()
         ), SetOptions.merge())
     }
@@ -103,7 +104,7 @@ class AppRepository(private val reportDao: ReportDao) {
      * Finalizes cleanup with separate prioritized writes and firm timeouts.
      * Guaranteed to finish or throw a catchable error (no hangs).
      */
-    suspend fun completeCleanup(reportId: String, cleanedPhotoUrl: String) = withContext(Dispatchers.IO) {
+    suspend fun completeCleanup(reportId: String, cleanedPhotoUrl: String, aiCleanStatus: String? = null) = withContext(Dispatchers.IO) {
         val userId = auth.currentUser?.uid ?: throw Exception("User not authenticated")
         val cleanId = reportId.trim()
         val now = System.currentTimeMillis()
@@ -116,8 +117,10 @@ class AppRepository(private val reportDao: ReportDao) {
             reportsCollection.document(cleanId).set(mapOf(
                 "status" to "Cleaned", 
                 "cleanedPhotoUrl" to cleanedPhotoUrl,
+                "aiCleanStatus" to aiCleanStatus,
+                "aiCleanupResult" to aiCleanStatus, // Mapping status to result for consistency
                 "timestamp" to now
-            ), SetOptions.merge())
+            ).filterValues { it != null }, SetOptions.merge())
             Log.d(TAG, "Cloud task status updated.")
         } catch (e: Exception) {
             Log.e(TAG, "Critical sync failed: ${e.message}")
@@ -197,6 +200,14 @@ class AppRepository(private val reportDao: ReportDao) {
                             },
                             region = data["region"] as? String ?: "",
                             likes = (data["likes"] as? List<String>) ?: emptyList(),
+                            aiSuggestedCategory = data["aiSuggestedCategory"] as? String,
+                            afterImageUri = data["cleanedPhotoUrl"] as? String,
+                            aiCleanStatus = data["aiCleanStatus"] as? String,
+                            beforeImageUri = data["beforeImageUri"] as? String,
+                            aiCleanupResult = data["aiCleanupResult"] as? String,
+                            beforeDetectedLabels = data["beforeDetectedLabels"] as? List<String>,
+                            afterDetectedLabels = data["afterDetectedLabels"] as? List<String>,
+                            assignedTo = data["assignedTo"] as? String,
                             priority = data["priority"] as? String ?: "Low"
                         )
                         
