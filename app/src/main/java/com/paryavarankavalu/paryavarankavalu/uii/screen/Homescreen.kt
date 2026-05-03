@@ -60,12 +60,17 @@ fun HomeScreen(navController: NavController, viewModel: MainViewModel = viewMode
     val userProfile by viewModel.userProfile.collectAsState()
     val reports by viewModel.reports.collectAsState()
 
-    // Filter reports for different sections with memoization
-    val myTasks = remember(reports, userProfile) {
-        reports.filter { it.cleanerId == userProfile?.uid && it.status == "Assigned" }
+    // Filter reports: Assigned to me vs Others (Nearby)
+    val assignedReports = remember(reports, userProfile) {
+        reports.filter { it.assignedTo == userProfile?.uid && it.status == "Assigned" }
+            .sortedByDescending { it.timestamp }
     }
-    val recentReports = remember(reports) {
-        reports.sortedByDescending { it.timestamp }
+    
+    val nearbyReports = remember(reports, assignedReports) {
+        // Exclude reports already shown in the "Assigned" section to avoid duplication
+        reports.filter { report -> 
+            assignedReports.none { it.id == report.id } 
+        }.sortedByDescending { it.timestamp }
     }
 
     Scaffold(
@@ -94,41 +99,17 @@ fun HomeScreen(navController: NavController, viewModel: MainViewModel = viewMode
                         label = "Eco Karma",
                         value = "${userProfile?.ecoKarma ?: 0}",
                         icon = Icons.Default.Star,
-                        containerColor = SecondaryContainer,  // #B1F2BE
-                        contentColor = OnBackground            // #161D16
+                        containerColor = SecondaryContainer,
+                        contentColor = OnBackground
                     )
                     StatCard(
                         modifier = Modifier.weight(1f),
                         label = "Reports",
                         value = "${userProfile?.reportsCount ?: 0}",
                         icon = Icons.AutoMirrored.Filled.List,
-                        containerColor = TertiaryContainer,   // #95B3A0
+                        containerColor = TertiaryContainer,
                         contentColor = OnBackground
                     )
-                }
-            }
-
-            // Your Tasks Section (Only for Volunteers with assigned tasks)
-            if (userProfile?.role == "Volunteer" && myTasks.isNotEmpty()) {
-                item {
-                    Text(
-                        text = "Your Active Tasks",
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Black,
-                        color = MaterialTheme.colorScheme.onBackground,
-                        modifier = Modifier.padding(24.dp, top = 32.dp, bottom = 12.dp)
-                    )
-                    LazyRow(
-                        modifier = Modifier.fillMaxWidth(),
-                        contentPadding = PaddingValues(horizontal = 24.dp),
-                        horizontalArrangement = Arrangement.spacedBy(16.dp)
-                    ) {
-                        items(myTasks) { report ->
-                            TaskSmallCard(report) {
-                                navController.navigate("report?reportId=${report.id}")
-                            }
-                        }
-                    }
                 }
             }
 
@@ -137,7 +118,44 @@ fun HomeScreen(navController: NavController, viewModel: MainViewModel = viewMode
                 GeoZoneCard(userProfile?.assignedRegion ?: "Detecting Zone...")
             }
 
-            // Recent Reports Section
+            // My Assigned Work Section (Priority 1)
+            if (assignedReports.isNotEmpty()) {
+                item {
+                    Text(
+                        text = "My Assigned Work",
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Black,
+                        color = MaterialTheme.colorScheme.onBackground,
+                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp)
+                    )
+                }
+                
+                items(assignedReports) { report ->
+                    Box(Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) {
+                        ReportCard(
+                            report = report,
+                            userProfile = userProfile,
+                            onBookClick = { id -> viewModel.bookCleanup(id) },
+                            onUploadProof = { id -> navController.navigate("report?reportId=$id") },
+                            onCardClick = { 
+                                viewModel.setSelectedReportId(report.id)
+                                navController.navigate("map") {
+                                    popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+                                    launchSingleTop = true
+                                    restoreState = true
+                                }
+                            },
+                            onDelete = { reportId -> viewModel.deleteReport(reportId) },
+                            onViewDetails = { reportId ->
+                                viewModel.setSelectedReportId(reportId)
+                                navController.navigate("map")
+                            }
+                        )
+                    }
+                }
+            }
+
+            // Nearby Issues Section (Priority 2)
             item {
                 Text(
                     text = "Nearby Issues",
@@ -148,7 +166,7 @@ fun HomeScreen(navController: NavController, viewModel: MainViewModel = viewMode
                 )
             }
 
-            if (recentReports.isEmpty()) {
+            if (nearbyReports.isEmpty()) {
                 item {
                     Surface(
                         modifier = Modifier.padding(horizontal = 20.dp).fillMaxWidth(),
@@ -163,41 +181,29 @@ fun HomeScreen(navController: NavController, viewModel: MainViewModel = viewMode
                         )
                     }
                 }
-            }
-
-            items(recentReports) { report ->
-                Box(Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) {
-                    ReportCard(
-                        report = report,
-                        userProfile = userProfile,
-                        onBookClick = { id -> 
-                            viewModel.bookCleanup(id)
-                        },
-                        onUploadProof = { id -> navController.navigate("report?reportId=$id") },
-                        onCardClick = { 
-                            viewModel.setSelectedReportId(report.id)
-                            navController.navigate("map") {
-                                // Pop up to the start destination of the graph to
-                                // avoid building up a large stack of destinations
-                                // on the back stack as users select items
-                                popUpTo(navController.graph.findStartDestination().id) {
-                                    saveState = true
+            } else {
+                items(nearbyReports) { report ->
+                    Box(Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) {
+                        ReportCard(
+                            report = report,
+                            userProfile = userProfile,
+                            onBookClick = { id -> viewModel.bookCleanup(id) },
+                            onUploadProof = { id -> navController.navigate("report?reportId=$id") },
+                            onCardClick = { 
+                                viewModel.setSelectedReportId(report.id)
+                                navController.navigate("map") {
+                                    popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+                                    launchSingleTop = true
+                                    restoreState = true
                                 }
-                                // Avoid multiple copies of the same destination when
-                                // reselecting the same item
-                                launchSingleTop = true
-                                // Restore state when reselecting a previously selected item
-                                restoreState = true
+                            },
+                            onDelete = { reportId -> viewModel.deleteReport(reportId) },
+                            onViewDetails = { reportId ->
+                                viewModel.setSelectedReportId(reportId)
+                                navController.navigate("map")
                             }
-                        },
-                        onDelete = { reportId -> 
-                            viewModel.deleteReport(reportId)
-                        },
-                        onViewDetails = { reportId ->
-                            viewModel.setSelectedReportId(reportId)
-                            navController.navigate("map")
-                        }
-                    )
+                        )
+                    }
                 }
             }
             

@@ -7,6 +7,8 @@ import androidx.activity.compose.setContent
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.ViewModelProvider
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
@@ -56,7 +58,7 @@ import com.paryavarankavalu.paryavarankavalu.viewmodel.MainViewModel
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
-        val splashScreen = installSplashScreen()
+        installSplashScreen()
         super.onCreate(savedInstanceState)
         
         val viewModel = ViewModelProvider(this)[MainViewModel::class.java]
@@ -69,15 +71,11 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        splashScreen.setKeepOnScreenCondition {
-            !viewModel.isReady.value
-        }
-
         val auth = FirebaseAuth.getInstance()
         val startDest = if (auth.currentUser != null) "home" else "auth"
 
         setContent {
-            val isReady by viewModel.isReady.collectAsState()
+            var showSplash by remember { mutableStateOf(true) }
             val isDarkMode by viewModel.isDarkMode.collectAsState()
             val context = LocalContext.current
 
@@ -90,10 +88,16 @@ class MainActivity : ComponentActivity() {
             val useDarkTheme = isDarkMode ?: isSystemInDarkTheme()
             
             ParyavaranKavaluTheme(darkTheme = useDarkTheme) {
-                if (!isReady) {
-                    SplashScreenContent()
-                } else {
-                    AppMain(startDest, viewModel)
+                Crossfade(
+                    targetState = showSplash,
+                    animationSpec = tween(400),
+                    label = "SplashTransition"
+                ) { isSplashing ->
+                    if (isSplashing) {
+                        SplashScreen(onTimeout = { showSplash = false })
+                    } else {
+                        AppMain(startDest, viewModel)
+                    }
                 }
             }
         }

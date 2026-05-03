@@ -6,7 +6,7 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import com.paryavarankavalu.paryavarankavalu.model.LocalReport
 
-@Database(entities = [LocalReport::class], version = 1, exportSchema = false)
+@Database(entities = [LocalReport::class], version = 4, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun reportDao(): ReportDao
 

@@ -96,11 +96,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             repository.getLocalReports().collect { _reports.value = it }
         }
-
-        viewModelScope.launch {
-            delay(3000)
-            if (!_isReady.value) _isReady.value = true
-        }
     }
 
     private fun setupUserListeners(uid: String) {
@@ -210,7 +205,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
      * 2. Added logging to track progress.
      * 3. Prevents double-clicks.
      */
-    fun completeCleanupWithImage(reportId: String, bitmap: Bitmap, onSuccess: () -> Unit, onError: (String) -> Unit) {
+    fun completeCleanupWithImage(reportId: String, bitmap: Bitmap, aiCleanStatus: String? = null, onSuccess: () -> Unit, onError: (String) -> Unit) {
         viewModelScope.launch {
             if (_isLoading.value) return@launch
             _isLoading.value = true
@@ -225,7 +220,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 
                 // Final document sync
                 withTimeout(20000L) {
-                    repository.completeCleanup(reportId, url)
+                    repository.completeCleanup(reportId, url, aiCleanStatus)
                 }
                 
                 Log.d(TAG, "Cleanup completed successfully.")

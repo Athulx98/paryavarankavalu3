@@ -14,7 +14,15 @@ data class Report(
     val timestamp: Long = System.currentTimeMillis(),
     val region: String = "",
     val likes: List<String> = emptyList(),
-    val priority: String = "Low"
+    val priority: String = "Low",
+    val aiSuggestedCategory: String? = null,
+    val afterImageUri: String? = null,
+    val aiCleanStatus: String? = null,
+    val beforeImageUri: String? = null,
+    val aiCleanupResult: String? = null,
+    val beforeDetectedLabels: List<String>? = null,
+    val afterDetectedLabels: List<String>? = null,
+    val assignedTo: String? = null
 )
 
 data class UserProfile(

@@ -18,7 +18,15 @@ data class LocalReport(
     val timestamp: Long,
     val region: String,
     val likesJson: String, // Stored as comma-separated or JSON string
-    val priority: String
+    val priority: String,
+    val aiSuggestedCategory: String? = null,
+    val afterImageUri: String? = null,
+    val aiCleanStatus: String? = null,
+    val beforeImageUri: String? = null,
+    val aiCleanupResult: String? = null,
+    val beforeDetectedLabelsCsv: String? = null,
+    val afterDetectedLabelsCsv: String? = null,
+    val assignedTo: String? = null
 )
 
 fun Report.toLocal(): LocalReport = LocalReport(
@@ -35,7 +43,15 @@ fun Report.toLocal(): LocalReport = LocalReport(
     timestamp = timestamp,
     region = region,
     likesJson = likes.joinToString(","),
-    priority = priority
+    priority = priority,
+    aiSuggestedCategory = aiSuggestedCategory,
+    afterImageUri = afterImageUri,
+    aiCleanStatus = aiCleanStatus,
+    beforeImageUri = beforeImageUri,
+    aiCleanupResult = aiCleanupResult,
+    beforeDetectedLabelsCsv = beforeDetectedLabels?.joinToString(","),
+    afterDetectedLabelsCsv = afterDetectedLabels?.joinToString(","),
+    assignedTo = assignedTo
 )
 
 fun LocalReport.toDomain(): Report = Report(
@@ -52,5 +68,13 @@ fun LocalReport.toDomain(): Report = Report(
     timestamp = timestamp,
     region = region,
     likes = if (likesJson.isEmpty()) emptyList() else likesJson.split(","),
-    priority = priority
+    priority = priority,
+    aiSuggestedCategory = aiSuggestedCategory,
+    afterImageUri = afterImageUri,
+    aiCleanStatus = aiCleanStatus,
+    beforeImageUri = beforeImageUri,
+    aiCleanupResult = aiCleanupResult,
+    beforeDetectedLabels = beforeDetectedLabelsCsv?.split(",")?.filter { it.isNotEmpty() },
+    afterDetectedLabels = afterDetectedLabelsCsv?.split(",")?.filter { it.isNotEmpty() },
+    assignedTo = assignedTo
 )

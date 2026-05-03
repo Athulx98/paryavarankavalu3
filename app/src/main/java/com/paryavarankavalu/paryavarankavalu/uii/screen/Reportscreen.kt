@@ -51,6 +51,8 @@ import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
 import com.google.android.gms.tasks.CancellationTokenSource
 import com.paryavarankavalu.paryavarankavalu.model.Report
+import com.paryavarankavalu.paryavarankavalu.ai.WasteDetectionHelper
+import com.paryavarankavalu.paryavarankavalu.ai.CleanupVerificationHelper
 import com.paryavarankavalu.paryavarankavalu.service.AiService
 import com.paryavarankavalu.paryavarankavalu.ui.theme.*
 import com.paryavarankavalu.paryavarankavalu.viewmodel.MainViewModel
@@ -77,13 +79,17 @@ fun ReportScreen(
     
     var step by remember { mutableIntStateOf(1) }
     var capturedBitmap by remember { mutableStateOf<Bitmap?>(null) }
-    var wasteType by remember { mutableStateOf(if (reportId == null) "Analyzing..." else "Verifying Cleanup...") }
+    var wasteType by remember { mutableStateOf(if (reportId == null) "General Waste" else "Needs More Cleaning") }
+    var aiSuggestedCategory by remember { mutableStateOf<String?>(null) }
     var priority by remember { mutableStateOf("Low") }
     val isUploading by viewModel.isLoading.collectAsState()
     var userLocation by remember { mutableStateOf<Pair<Double, Double>?>(null) }
     var detectedRegion by remember { mutableStateOf("Unknown Area") }
 
     val isCleanupMode = reportId != null
+    val reports by viewModel.reports.collectAsState()
+    val originalReport = remember(reportId, reports) { reports.find { it.id == reportId } }
+    
     val aiService = remember { AiService(BuildConfig.GEMINI_API_KEY) }
     val fusedLocationClient = remember { LocationServices.getFusedLocationProviderClient(context) }
 
@@ -92,13 +98,37 @@ fun ReportScreen(
     ) { uri ->
         uri?.let {
             scope.launch {
-                val bitmap = uriToBitmap(context, it)
-                capturedBitmap = bitmap
-                step = 2
-                analyzeImage(aiService, bitmap, { 
-                    wasteType = it 
-                    priority = aiService.determinePriority(it)
-                }, scope, isCleanupMode)
+                try {
+                    val bitmap = uriToBitmap(context, it)
+                    capturedBitmap = bitmap
+                    step = 2
+                    aiSuggestedCategory = "Analyzing..."
+                    
+                    if (isCleanupMode) {
+                        val status = withContext(Dispatchers.IO) {
+                            CleanupVerificationHelper.verifyCleaningWithUrl(originalReport?.photoUrl, bitmap)
+                        }
+                        val uiStatus = if (status == "Cleaned") "Site Cleaned" else "Needs More Cleaning"
+                        aiSuggestedCategory = uiStatus
+                        wasteType = uiStatus
+                    } else {
+                        val category = withContext(Dispatchers.IO) {
+                            WasteDetectionHelper.suggestWasteCategory(bitmap)
+                        }
+                        aiSuggestedCategory = category
+                        if (category != "Not detected") {
+                            wasteType = category
+                            priority = aiService.determinePriority(category)
+                        } else {
+                            wasteType = "General Waste"
+                            priority = "Low"
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.e("ReportScreen", "AI Analysis failed", e)
+                    aiSuggestedCategory = "Detection Failed"
+                    wasteType = if (isCleanupMode) "Needs More Cleaning" else "General Waste"
+                }
             }
         }
     }
@@ -140,10 +170,35 @@ fun ReportScreen(
                     onPhotoCaptured = { bitmap ->
                         capturedBitmap = bitmap
                         step = 2
-                        analyzeImage(aiService, bitmap, { 
-                            wasteType = it 
-                            priority = aiService.determinePriority(it)
-                        }, scope, isCleanupMode)
+                        scope.launch {
+                            try {
+                                aiSuggestedCategory = "Analyzing..."
+                                if (isCleanupMode) {
+                                    val status = withContext(Dispatchers.IO) {
+                                        CleanupVerificationHelper.verifyCleaningWithUrl(originalReport?.photoUrl, bitmap)
+                                    }
+                                    val uiStatus = if (status == "Cleaned") "Site Cleaned" else "Needs More Cleaning"
+                                    aiSuggestedCategory = uiStatus
+                                    wasteType = uiStatus
+                                } else {
+                                    val category = withContext(Dispatchers.IO) {
+                                        WasteDetectionHelper.suggestWasteCategory(bitmap)
+                                    }
+                                    aiSuggestedCategory = category
+                                    if (category != "Not detected") {
+                                        wasteType = category
+                                        priority = aiService.determinePriority(category)
+                                    } else {
+                                        wasteType = "General Waste"
+                                        priority = "Low"
+                                    }
+                                }
+                            } catch (e: Exception) {
+                                Log.e("ReportScreen", "Camera AI Analysis failed", e)
+                                aiSuggestedCategory = "Detection Failed"
+                                wasteType = if (isCleanupMode) "Needs More Cleaning" else "General Waste"
+                            }
+                        }
                     },
                     onGalleryClick = { galleryLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
                     permissionGranted = cameraPermissionState.status.isGranted,
@@ -152,11 +207,12 @@ fun ReportScreen(
                 2 -> AnalysisPreview(
                     bitmap = capturedBitmap,
                     category = wasteType,
+                    aiCategory = aiSuggestedCategory,
                     isUploading = isUploading,
                     locationReady = userLocation != null,
                     regionName = detectedRegion,
                     isCleanupMode = isCleanupMode,
-                    onRetake = { step = 1; wasteType = if (isCleanupMode) "Verifying Cleanup..." else "Analyzing..."; priority = "Low" },
+                    onRetake = { step = 1; aiSuggestedCategory = null; wasteType = if (isCleanupMode) "Needs More Cleaning" else "General Waste"; priority = "Low" },
                     onCategoryChange = { newType -> 
                         wasteType = newType 
                         priority = aiService.determinePriority(newType)
@@ -166,6 +222,7 @@ fun ReportScreen(
                             viewModel.completeCleanupWithImage(
                                 reportId = reportId!!,
                                 bitmap = capturedBitmap!!,
+                                aiCleanStatus = aiSuggestedCategory,
                                 onSuccess = { step = 3 },
                                 onError = { msg -> Toast.makeText(context, "Action failed: $msg", Toast.LENGTH_SHORT).show() }
                             )
@@ -177,7 +234,8 @@ fun ReportScreen(
                                 latitude = userLocation?.first ?: 0.0,
                                 longitude = userLocation?.second ?: 0.0,
                                 region = detectedRegion,
-                                status = "Reported"
+                                status = "Reported",
+                                aiSuggestedCategory = if (!isCleanupMode) aiSuggestedCategory else null
                             )
                             viewModel.submitReportWithImage(
                                 report = report,
@@ -278,6 +336,7 @@ fun CameraCaptureView(
 fun AnalysisPreview(
     bitmap: Bitmap?,
     category: String,
+    aiCategory: String?,
     isUploading: Boolean,
     locationReady: Boolean,
     regionName: String,
@@ -309,6 +368,9 @@ fun AnalysisPreview(
 
         Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp), colors = CardDefaults.cardColors(containerColor = Sage50)) {
             Column(modifier = Modifier.padding(20.dp)) {
+                aiCategory?.let {
+                    Text("AI Suggested Category: $it", color = Forest900, fontSize = 14.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 8.dp))
+                }
                 Box {
                     Column {
                         Text(if (isCleanupMode) "Status" else "Detected Category", color = Sage400, fontSize = 12.sp, fontWeight = FontWeight.Bold)
@@ -341,7 +403,7 @@ fun AnalysisPreview(
                 modifier = Modifier.weight(1.5f).height(64.dp),
                 shape = RoundedCornerShape(20.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = if (isCleanupMode && category == "Needs More Cleaning") Color.Gray else GreenPrimary),
-                enabled = !isUploading && locationReady && (category != "Analyzing..." && category != "Verifying Cleanup...") && (!isCleanupMode || category == "Site Cleaned")
+                enabled = !isUploading && locationReady && (!isCleanupMode || category == "Cleaned" || category == "Site Cleaned")
             ) {
                 if (isUploading) CircularProgressIndicator(color = Color.White, modifier = Modifier.size(24.dp))
                 else Text(if (isCleanupMode) "COMPLETE TASK" else "SUBMIT REPORT", fontWeight = FontWeight.Bold)
