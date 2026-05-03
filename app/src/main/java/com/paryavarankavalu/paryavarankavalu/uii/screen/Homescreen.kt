@@ -170,7 +170,9 @@ fun HomeScreen(navController: NavController, viewModel: MainViewModel = viewMode
                     ReportCard(
                         report = report,
                         userProfile = userProfile,
-                        onBookClick = { id -> viewModel.bookCleanup(id) },
+                        onBookClick = { id -> 
+                            viewModel.bookCleanup(id)
+                        },
                         onUploadProof = { id -> navController.navigate("report?reportId=$id") },
                         onCardClick = { 
                             viewModel.setSelectedReportId(report.id)
@@ -408,13 +410,16 @@ fun ReportCard(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = report.wasteType.uppercase(),
-                        fontWeight = FontWeight.Black,
-                        fontSize = 10.sp,
-                        color = MaterialTheme.colorScheme.onBackground,
-                        letterSpacing = 1.sp
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(
+                            text = report.wasteType.uppercase(),
+                            fontWeight = FontWeight.Black,
+                            fontSize = 10.sp,
+                            color = MaterialTheme.colorScheme.onBackground,
+                            letterSpacing = 1.sp
+                        )
+                        StatusBadge(report.status)
+                    }
                     Box {
                         IconButton(
                             onClick = { showMenu = true },
@@ -511,7 +516,7 @@ fun ReportCard(
                                         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 0.dp),
                                         colors = ButtonDefaults.buttonColors(containerColor = OnBackground)
                                     ) {
-                                        Text("UPLOAD PROOF", fontSize = 9.sp, fontWeight = FontWeight.Black)
+                                        Text("VERIFY CLEANUP", fontSize = 9.sp, fontWeight = FontWeight.Black)
                                     }
                                 }
                             }

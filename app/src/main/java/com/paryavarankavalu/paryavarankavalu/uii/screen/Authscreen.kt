@@ -13,7 +13,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import com.google.firebase.auth.FirebaseAuth
 import com.paryavarankavalu.paryavarankavalu.ui.theme.Forest900
@@ -33,63 +32,20 @@ fun AuthScreen(navController: NavController, viewModel: MainViewModel) {
     val auth = FirebaseAuth.getInstance()
 
     Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color.White)
+        modifier = Modifier.fillMaxSize().background(Color.White)
     ) {
-        // Welcome Banner
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(300.dp)
-                .background(GreenPrimary)
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(24.dp),
-                verticalArrangement = Arrangement.Bottom
-            ) {
-                Text(
-                    text = "Welcome, Eco Spot",
-                    color = Color.White,
-                    fontSize = 32.sp,
-                    fontWeight = FontWeight.Black
-                )
-                Text(
-                    text = "Let's make our Home\nbetter together.",
-                    color = Color.White.copy(alpha = 0.8f),
-                    fontSize = 14.sp,
-                    lineHeight = 20.sp
-                )
+        Box(modifier = Modifier.fillMaxWidth().height(300.dp).background(GreenPrimary)) {
+            Column(modifier = Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.Bottom) {
+                Text(text = "Welcome, Eco Spot", color = Color.White, fontSize = 32.sp, fontWeight = FontWeight.Black)
+                Text(text = "Let's make our Home\nbetter together.", color = Color.White.copy(alpha = 0.8f), fontSize = 14.sp, lineHeight = 20.sp)
             }
         }
 
-        // Form
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(24.dp)
-        ) {
-            Text(
-                text = if (isLogin) "Sign in" else "Sign up",
-                fontSize = 24.sp,
-                fontWeight = FontWeight.Black,
-                color = Forest900
-            )
+        Column(modifier = Modifier.fillMaxSize().padding(24.dp)) {
+            Text(text = if (isLogin) "Sign in" else "Sign up", fontSize = 24.sp, fontWeight = FontWeight.Black, color = Forest900)
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = if (isLogin) "New here? " else "Already have an account? ",
-                    color = Sage400,
-                    fontSize = 14.sp
-                )
-                Text(
-                    text = if (isLogin) "Create account" else "Login",
-                    color = GreenPrimary,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.clickable { isLogin = !isLogin }
-                )
+                Text(text = if (isLogin) "New here? " else "Already have an account? ", color = Sage400, fontSize = 14.sp)
+                Text(text = if (isLogin) "Create account" else "Login", color = GreenPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clickable { isLogin = !isLogin })
             }
 
             Spacer(modifier = Modifier.height(32.dp))
@@ -101,11 +57,7 @@ fun AuthScreen(navController: NavController, viewModel: MainViewModel) {
                     label = { Text("Display Name") },
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(16.dp),
-                    colors = TextFieldDefaults.colors(
-                        focusedContainerColor = Sage50,
-                        unfocusedContainerColor = Sage50,
-                        focusedIndicatorColor = GreenPrimary
-                    )
+                    colors = TextFieldDefaults.colors(focusedContainerColor = Sage50, unfocusedContainerColor = Sage50, focusedIndicatorColor = GreenPrimary)
                 )
                 Spacer(modifier = Modifier.height(16.dp))
             }
@@ -116,11 +68,7 @@ fun AuthScreen(navController: NavController, viewModel: MainViewModel) {
                 label = { Text("Enter your email") },
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(16.dp),
-                colors = TextFieldDefaults.colors(
-                    focusedContainerColor = Sage50,
-                    unfocusedContainerColor = Sage50,
-                    focusedIndicatorColor = GreenPrimary
-                )
+                colors = TextFieldDefaults.colors(focusedContainerColor = Sage50, unfocusedContainerColor = Sage50, focusedIndicatorColor = GreenPrimary)
             )
             Spacer(modifier = Modifier.height(16.dp))
             OutlinedTextField(
@@ -130,20 +78,11 @@ fun AuthScreen(navController: NavController, viewModel: MainViewModel) {
                 visualTransformation = PasswordVisualTransformation(),
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(16.dp),
-                colors = TextFieldDefaults.colors(
-                    focusedContainerColor = Sage50,
-                    unfocusedContainerColor = Sage50,
-                    focusedIndicatorColor = GreenPrimary
-                )
+                colors = TextFieldDefaults.colors(focusedContainerColor = Sage50, unfocusedContainerColor = Sage50, focusedIndicatorColor = GreenPrimary)
             )
 
             if (error != null) {
-                Text(
-                    text = error!!,
-                    color = Color.Red,
-                    fontSize = 12.sp,
-                    modifier = Modifier.padding(top = 8.dp)
-                )
+                Text(text = error!!, color = Color.Red, fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp))
             }
 
             Spacer(modifier = Modifier.height(32.dp))
@@ -159,7 +98,9 @@ fun AuthScreen(navController: NavController, viewModel: MainViewModel) {
                         auth.signInWithEmailAndPassword(email, password)
                             .addOnSuccessListener { 
                                 isLoading = false
-                                navController.navigate("home") 
+                                navController.navigate("home") {
+                                    popUpTo("auth") { inclusive = true }
+                                }
                             }
                             .addOnFailureListener { 
                                 isLoading = false
@@ -172,7 +113,9 @@ fun AuthScreen(navController: NavController, viewModel: MainViewModel) {
                                     viewModel.createUserProfile(user.uid, email, displayName)
                                 }
                                 isLoading = false
-                                navController.navigate("home")
+                                navController.navigate("home") {
+                                    popUpTo("auth") { inclusive = true }
+                                }
                             }
                             .addOnFailureListener { 
                                 isLoading = false
@@ -180,9 +123,7 @@ fun AuthScreen(navController: NavController, viewModel: MainViewModel) {
                             }
                     }
                 },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(56.dp),
+                modifier = Modifier.fillMaxWidth().height(56.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = GreenPrimary),
                 shape = RoundedCornerShape(16.dp),
                 enabled = !isLoading

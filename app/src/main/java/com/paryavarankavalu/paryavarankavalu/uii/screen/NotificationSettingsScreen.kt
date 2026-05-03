@@ -1,5 +1,8 @@
 package com.paryavarankavalu.paryavarankavalu.uii.screen
 
+import android.content.Intent
+import android.net.Uri
+import android.provider.Settings
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -12,6 +15,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -24,8 +28,8 @@ import com.paryavarankavalu.paryavarankavalu.viewmodel.MainViewModel
 @Composable
 fun NotificationSettingsScreen(navController: NavController, viewModel: MainViewModel = viewModel()) {
     val userProfile by viewModel.userProfile.collectAsState()
+    val context = LocalContext.current
     
-    // Local state for UI responsiveness, initialized from profile
     var pushEnabled by remember(userProfile) { mutableStateOf(userProfile?.pushNotificationsEnabled ?: true) }
     var soundOption by remember(userProfile) { mutableStateOf(userProfile?.notificationSound ?: "Default") }
     var vibrationEnabled by remember(userProfile) { mutableStateOf(userProfile?.vibrationEnabled ?: true) }
@@ -42,29 +46,20 @@ fun NotificationSettingsScreen(navController: NavController, viewModel: MainView
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background
-                )
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background)
             )
         }
     ) { padding ->
         Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .padding(24.dp),
+            modifier = Modifier.fillMaxSize().padding(padding).padding(24.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp)
         ) {
-            // Header Card
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 color = GreenPrimary.copy(alpha = 0.1f),
                 shape = RoundedCornerShape(24.dp)
             ) {
-                Row(
-                    modifier = Modifier.padding(20.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+                Row(modifier = Modifier.padding(20.dp), verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Default.Notifications, contentDescription = null, tint = GreenPrimary, modifier = Modifier.size(32.dp))
                     Spacer(modifier = Modifier.width(16.dp))
                     Column {
@@ -74,22 +69,18 @@ fun NotificationSettingsScreen(navController: NavController, viewModel: MainView
                 }
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
-
-            // Main Toggle
             SettingsToggleItem(
                 title = "Push Notifications",
                 description = "Receive alerts for new waste reports nearby",
                 checked = pushEnabled,
-                onCheckedChange = { 
-                    pushEnabled = it
-                    viewModel.updateNotificationSettings(it, soundOption, vibrationEnabled)
+                onCheckedChange = { isChecked -> 
+                    pushEnabled = isChecked
+                    viewModel.updateNotificationSettings(isChecked, soundOption, vibrationEnabled)
                 }
             )
 
             HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), color = MaterialTheme.colorScheme.outlineVariant)
 
-            // Sound Dropdown
             Column {
                 Text("Notification Sound", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurface)
                 Spacer(modifier = Modifier.height(8.dp))
@@ -99,50 +90,43 @@ fun NotificationSettingsScreen(navController: NavController, viewModel: MainView
                         shape = RoundedCornerShape(16.dp),
                         colors = CardDefaults.outlinedCardColors(containerColor = MaterialTheme.colorScheme.surface)
                     ) {
-                        Row(
-                            modifier = Modifier.padding(16.dp).fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
+                        Row(modifier = Modifier.padding(16.dp).fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                             Text(soundOption, fontSize = 16.sp)
                             Text("▼", fontSize = 12.sp, color = GreenPrimary)
                         }
                     }
-                    DropdownMenu(
-                        expanded = soundExpanded,
-                        onDismissRequest = { soundExpanded = false },
-                        modifier = Modifier.fillMaxWidth(0.8f)
-                    ) {
+                    DropdownMenu(expanded = soundExpanded, onDismissRequest = { soundExpanded = false }, modifier = Modifier.fillMaxWidth(0.8f)) {
                         sounds.forEach { sound ->
-                            DropdownMenuItem(
-                                text = { Text(sound) },
-                                onClick = {
-                                    soundOption = sound
-                                    soundExpanded = false
-                                    viewModel.updateNotificationSettings(pushEnabled, sound, vibrationEnabled)
-                                }
-                            )
+                            DropdownMenuItem(text = { Text(sound) }, onClick = {
+                                soundOption = sound
+                                soundExpanded = false
+                                viewModel.updateNotificationSettings(pushEnabled, sound, vibrationEnabled)
+                            })
                         }
                     }
                 }
             }
 
-            // Vibration Toggle
             SettingsToggleItem(
                 title = "Vibration",
                 description = "Vibrate device for incoming alerts",
                 checked = vibrationEnabled,
-                onCheckedChange = { 
-                    vibrationEnabled = it
-                    viewModel.updateNotificationSettings(pushEnabled, soundOption, it)
+                onCheckedChange = { isChecked -> 
+                    vibrationEnabled = isChecked
+                    viewModel.updateNotificationSettings(pushEnabled, soundOption, isChecked)
                 }
             )
             
             Spacer(modifier = Modifier.weight(1f))
             
             Text(
-                "System Settings",
-                modifier = Modifier.fillMaxWidth().clickable { /* Intent to system settings */ },
+                "Open System Settings",
+                modifier = Modifier.fillMaxWidth().clickable { 
+                    val intent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+                        putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+                    }
+                    context.startActivity(intent)
+                },
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                 fontSize = 13.sp,
                 color = GreenPrimary,

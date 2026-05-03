@@ -69,9 +69,6 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        // Start tracking early to satisfy splash readiness
-        viewModel.startLocationTracking(this)
-        
         splashScreen.setKeepOnScreenCondition {
             !viewModel.isReady.value
         }
@@ -82,9 +79,13 @@ class MainActivity : ComponentActivity() {
         setContent {
             val isReady by viewModel.isReady.collectAsState()
             val isDarkMode by viewModel.isDarkMode.collectAsState()
-            
-            // Initialize theme preferences
-            viewModel.initTheme(LocalContext.current)
+            val context = LocalContext.current
+
+            // Initialize background tasks and tracking without blocking onCreate
+            LaunchedEffect(Unit) {
+                viewModel.initTheme(context)
+                viewModel.startLocationTracking(context)
+            }
             
             val useDarkTheme = isDarkMode ?: isSystemInDarkTheme()
             

@@ -21,9 +21,9 @@ data class UserProfile(
     val uid: String = "",
     val displayName: String = "",
     val email: String = "",
-    val ecoKarma: Int = 0,
-    val reportsCount: Int = 0,
-    val cleanupsCount: Int = 0,
+    val ecoKarma: Long = 0,      // Changed from Int to Long for Firebase compatibility
+    val reportsCount: Long = 0,   // Changed from Int to Long
+    val cleanupsCount: Long = 0,  // Changed from Int to Long
     val streak: Int = 0,
     val lastActivityTimestamp: Long = 0,
     val assignedRegion: String? = null,

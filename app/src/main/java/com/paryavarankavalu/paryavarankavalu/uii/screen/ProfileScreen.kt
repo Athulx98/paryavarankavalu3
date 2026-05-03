@@ -42,7 +42,7 @@ fun ProfileScreen(navController: NavController, viewModel: MainViewModel = viewM
 
     val leaderboard by viewModel.leaderboard.collectAsState()
 
-    val levelInfo = getLevelInfo(userProfile?.ecoKarma ?: 0)
+    val levelInfo = getLevelInfo(userProfile?.ecoKarma ?: 0L)
 
     Column(
         modifier = Modifier
@@ -259,7 +259,10 @@ fun ProfileScreen(navController: NavController, viewModel: MainViewModel = viewM
                     ReportCard(
                         report = report,
                         userProfile = userProfile,
-                        onBookClick = {},
+                        onBookClick = { id -> 
+                            viewModel.bookCleanup(id)
+                        },
+                        onUploadProof = { id -> navController.navigate("report?reportId=$id") },
                         onCardClick = { 
                             viewModel.setSelectedReportId(report.id)
                             navController.navigate("map") {
@@ -396,11 +399,11 @@ fun ProfileMenuItem(label: String, icon: ImageVector, color: Color = Forest900, 
 
 data class LevelInfo(val tier: String, val rank: String)
 
-fun getLevelInfo(points: Int): LevelInfo {
+fun getLevelInfo(points: Long): LevelInfo {
     return when {
-        points < 100 -> LevelInfo("Seedling", "Rookie")
-        points < 300 -> LevelInfo("Sapling", "Defender")
-        points < 1000 -> LevelInfo("Tree", "Guardian")
+        points < 100L -> LevelInfo("Seedling", "Rookie")
+        points < 300L -> LevelInfo("Sapling", "Defender")
+        points < 1000L -> LevelInfo("Tree", "Guardian")
         else -> LevelInfo("Forest", "Master")
     }
 }

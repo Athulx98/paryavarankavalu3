@@ -44,12 +44,10 @@ object LocationUtils {
             ?: SMART_ZONES[0]
     }
 
-    fun getAddressFromLatLng(context: Context, lat: Double, lng: Double): String {
-        return try {
+    suspend fun getAddressFromLatLng(context: Context, lat: Double, lng: Double): String = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        try {
             val geocoder = Geocoder(context, Locale.getDefault())
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                // For Tiramisu+ we should ideally use the async API, 
-                // but for simplicity in this utility we use a blocking call if needed or return coordinates
                 val addresses = geocoder.getFromLocation(lat, lng, 1)
                 addresses?.firstOrNull()?.let {
                     listOfNotNull(it.thoroughfare, it.subLocality, it.locality)

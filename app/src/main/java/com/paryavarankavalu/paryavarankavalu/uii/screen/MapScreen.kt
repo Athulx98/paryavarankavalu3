@@ -481,8 +481,10 @@ fun MapScreen(
                             context.startActivity(Intent(Intent.ACTION_VIEW, fallbackUri))
                         }
                     },
-                    onTakeCharge = { id -> viewModel.bookCleanup(id) },
-                    onCompleteCleanup = { id, url -> scope.launch { viewModel.completeCleanup(id, url) } },
+                    onTakeCharge = { id -> 
+                        viewModel.bookCleanup(id)
+                    },
+                    onUploadProof = { id -> navController.navigate("report?reportId=$id") },
                     onClose = { selectedReport = null }
                 )
             }
@@ -524,39 +526,11 @@ fun ReportDetailFloatingCard(
     uid: String,
     onNavigate: (Double, Double) -> Unit,
     onTakeCharge: (String) -> Unit,
-    onCompleteCleanup: (String, String) -> Unit,
+    onUploadProof: (String) -> Unit,
     onClose: () -> Unit
 ) {
     val context = LocalContext.current
     var address by remember { mutableStateOf("Fetching address...") }
-    var isUploading by remember { mutableStateOf(false) }
-    val scope2 = rememberCoroutineScope()
-    val viewModelForUpload: MainViewModel = viewModel()
-
-    val galleryLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.PickVisualMedia()
-    ) { uri ->
-        uri?.let {
-            isUploading = true
-            scope2.launch {
-                try {
-                    val bitmap = context.contentResolver.openInputStream(it)?.use { stream ->
-                        android.graphics.BitmapFactory.decodeStream(stream)
-                    } ?: android.graphics.Bitmap.createBitmap(1, 1, android.graphics.Bitmap.Config.ARGB_8888)
-                    val url = viewModelForUpload.uploadImage(bitmap)
-                    onCompleteCleanup(report.id, url)
-                } catch (e: Exception) {
-                    android.widget.Toast.makeText(
-                        context, "Upload failed: ${e.message}",
-                        android.widget.Toast.LENGTH_SHORT
-                    ).show()
-                } finally {
-                    isUploading = false
-                }
-            }
-        }
-    }
-
     LaunchedEffect(report) {
         address = LocationHelper.getAddressFromLatLng(context, report.latitude, report.longitude)
     }
@@ -708,9 +682,7 @@ fun ReportDetailFloatingCard(
         // Floating Camera Button Overlapping Card
         if (report.status == "Assigned" && report.cleanerId == uid) {
             FloatingActionButton(
-                onClick = {
-                    galleryLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
-                },
+                onClick = { onUploadProof(report.id) },
                 containerColor = GreenPrimary,
                 contentColor = Color.White,
                 shape = CircleShape,
@@ -718,11 +690,7 @@ fun ReportDetailFloatingCard(
                     .align(Alignment.BottomEnd)
                     .offset(x = 8.dp, y = (-24).dp)
             ) {
-                if (isUploading) {
-                    CircularProgressIndicator(color = Color.White, modifier = Modifier.size(24.dp))
-                } else {
-                    Icon(Icons.Default.AddAPhoto, contentDescription = "Upload Proof")
-                }
+                Icon(Icons.Default.Verified, contentDescription = "Verify Cleanup")
             }
         }
     }

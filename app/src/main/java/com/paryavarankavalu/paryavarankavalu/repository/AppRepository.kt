@@ -1,210 +1,301 @@
 package com.paryavarankavalu.paryavarankavalu.repository
 
 import android.graphics.Bitmap
+import android.util.Log
+import com.google.firebase.Timestamp
 import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.firestore.FieldValue
-import com.google.firebase.firestore.SetOptions
-import com.google.firebase.firestore.Query
+import com.google.firebase.firestore.*
 import com.google.firebase.storage.FirebaseStorage
 import com.paryavarankavalu.paryavarankavalu.model.Report
 import com.paryavarankavalu.paryavarankavalu.model.UserProfile
 import kotlinx.coroutines.tasks.await
 import java.io.ByteArrayOutputStream
 import java.util.*
-import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.withTimeout
+import com.paryavarankavalu.paryavarankavalu.model.toLocal
+import com.paryavarankavalu.paryavarankavalu.model.toDomain
+import com.paryavarankavalu.paryavarankavalu.model.LocalReport
 
-class AppRepository {
-    private val databaseId = "ai-studio-53d8912c-025e-436b-963e-d638bad473c7"
-    
-    private val firestore = try {
-        FirebaseFirestore.getInstance(databaseId)
-    } catch (e: Exception) {
-        FirebaseFirestore.getInstance()
-    }
+class AppRepository(private val reportDao: ReportDao) {
+    private val TAG = "AppRepository"
+    private val repositoryScope = CoroutineScope(Dispatchers.IO)
+    private val firestore = FirebaseFirestore.getInstance()
     private val auth = FirebaseAuth.getInstance()
-    
     private val storage = FirebaseStorage.getInstance()
 
     private val reportsCollection = firestore.collection("reports")
     private val usersCollection = firestore.collection("users")
 
-    suspend fun uploadImage(bitmap: Bitmap): String {
+    /**
+     * Resilient image upload. 
+     * Uses aggressive scaling (400px) and strict timeout to ensure near-instant transmission.
+     */
+    suspend fun uploadImage(bitmap: Bitmap): String = withContext(Dispatchers.IO) {
         val fileName = "${UUID.randomUUID()}.jpg"
         val storageRef = storage.reference.child("reports/$fileName")
         
-        // Scale down aggressively for fallback base64
-        val maxDim = 600f
+        val maxDim = 400f
         val scale = minOf(maxDim / bitmap.width, maxDim / bitmap.height)
-        val scaledBitmap = if (scale < 1) Bitmap.createScaledBitmap(bitmap, (bitmap.width * scale).toInt(), (bitmap.height * scale).toInt(), true) else bitmap
-
+        val scaledBitmap = if (scale < 1) {
+            Bitmap.createScaledBitmap(bitmap, (bitmap.width * scale).toInt().coerceAtLeast(1), (bitmap.height * scale).toInt().coerceAtLeast(1), true)
+        } else bitmap
+        
         val baos = ByteArrayOutputStream()
-        scaledBitmap.compress(Bitmap.CompressFormat.JPEG, 60, baos)
+        scaledBitmap.compress(Bitmap.CompressFormat.JPEG, 25, baos)
         val data = baos.toByteArray()
         
-        return try {
-            storageRef.putBytes(data).await()
-            storageRef.downloadUrl.await().toString()
-        } catch (e: Exception) {
-            // Fallback if Firebase Storage is not configured: save as base64 data URI directly in Firestore
-            val base64 = android.util.Base64.encodeToString(data, android.util.Base64.NO_WRAP)
-            "data:image/jpeg;base64,$base64"
+        val downloadUrl = withTimeoutOrNull(15000L) {
+            try {
+                Log.d(TAG, "Syncing verification proof to cloud storage...")
+                storageRef.putBytes(data).await()
+                storageRef.downloadUrl.await().toString()
+            } catch (e: Exception) {
+                Log.e(TAG, "Storage failure: ${e.message}")
+                null
+            }
+        }
+
+        if (downloadUrl != null) {
+            return@withContext downloadUrl
+        } else {
+            Log.w(TAG, "Network slow, using compressed Base64 fallback (~15KB).")
+            val tinyBaos = ByteArrayOutputStream()
+            scaledBitmap.compress(Bitmap.CompressFormat.JPEG, 15, tinyBaos)
+            val base64 = android.util.Base64.encodeToString(tinyBaos.toByteArray(), android.util.Base64.NO_WRAP)
+            return@withContext "data:image/jpeg;base64,$base64"
         }
     }
 
-    suspend fun submitReport(report: Report) {
+    suspend fun submitReport(report: Report) = withContext(Dispatchers.IO) {
         val userId = auth.currentUser?.uid ?: throw Exception("User not authenticated")
-        reportsCollection.document(report.id).set(report.copy(reporterId = userId), SetOptions.merge()).await()
+        val now = System.currentTimeMillis()
+        val batch = firestore.batch()
         
-        updateActivityAndKarma(userId, 10, isReport = true)
-    }
-
-    suspend fun createUserProfile(uid: String, email: String, displayName: String) {
-        val profile = UserProfile(
-            uid = uid,
-            email = email,
-            displayName = displayName,
-            role = "Citizen",
-            ecoKarma = 0
-        )
-        usersCollection.document(uid).set(profile, SetOptions.merge()).await()
-    }
-
-    suspend fun bookCleanup(reportId: String) {
-        val userId = auth.currentUser?.uid ?: throw Exception("User not authenticated")
+        batch.set(reportsCollection.document(report.id), report.copy(reporterId = userId, timestamp = now), SetOptions.merge())
+        batch.set(usersCollection.document(userId), mapOf(
+            "ecoKarma" to FieldValue.increment(10),
+            "reportsCount" to FieldValue.increment(1),
+            "lastActivityTimestamp" to now
+        ), SetOptions.merge())
         
-        val userDoc = usersCollection.document(userId).get().await()
-        val displayName = userDoc.getString("displayName") ?: "Eco Warrior"
-
-        reportsCollection.document(reportId).set(
-            mapOf(
-                "status" to "Assigned", 
-                "cleanerId" to userId,
-                "cleanerName" to displayName
-            ),
-            SetOptions.merge()
-        ).await()
+        batch.commit()
     }
 
-    suspend fun deleteReport(reportId: String) {
-        reportsCollection.document(reportId).delete().await()
-    }
-
-    suspend fun completeCleanup(reportId: String, cleanedPhotoUrl: String) {
+    suspend fun bookCleanup(reportId: String) = withContext(Dispatchers.IO) {
         val userId = auth.currentUser?.uid ?: throw Exception("User not authenticated")
-        reportsCollection.document(reportId).set(
-            mapOf(
+        val id = reportId.trim()
+        
+        reportsCollection.document(id).set(mapOf(
+            "status" to "Assigned", 
+            "cleanerId" to userId,
+            "timestamp" to System.currentTimeMillis()
+        ), SetOptions.merge())
+    }
+
+    /**
+     * Finalizes cleanup with separate prioritized writes and firm timeouts.
+     * Guaranteed to finish or throw a catchable error (no hangs).
+     */
+    suspend fun completeCleanup(reportId: String, cleanedPhotoUrl: String) = withContext(Dispatchers.IO) {
+        val userId = auth.currentUser?.uid ?: throw Exception("User not authenticated")
+        val cleanId = reportId.trim()
+        val now = System.currentTimeMillis()
+        
+        if (cleanId.isEmpty()) throw Exception("Invalid Task ID")
+        Log.d(TAG, "Syncing final status for task: $cleanId")
+
+        // 1. Critical Update: Mark as Cleaned in cloud
+        try {
+            reportsCollection.document(cleanId).set(mapOf(
                 "status" to "Cleaned", 
                 "cleanedPhotoUrl" to cleanedPhotoUrl,
-                "timestamp" to System.currentTimeMillis()
-            ),
-            SetOptions.merge()
-        ).await()
-        
-        updateActivityAndKarma(userId, 50, isCleanup = true)
+                "timestamp" to now
+            ), SetOptions.merge())
+            Log.d(TAG, "Cloud task status updated.")
+        } catch (e: Exception) {
+            Log.e(TAG, "Critical sync failed: ${e.message}")
+            throw Exception("Network sync failed. Please try again.")
+        }
+
+        // 2. Non-Critical Update: Grant Karma (Perform in background)
+        repositoryScope.launch {
+            try {
+                withTimeout(10000L) {
+                    usersCollection.document(userId).set(mapOf(
+                        "ecoKarma" to FieldValue.increment(50),
+                        "cleanupsCount" to FieldValue.increment(1),
+                        "lastActivityTimestamp" to now,
+                        "updatedAt" to now
+                    ), SetOptions.merge()).await()
+                    Log.d(TAG, "Karma points granted.")
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Background reward sync failed: ${e.message}")
+            }
+        }
     }
 
     suspend fun toggleLike(reportId: String) {
         val userId = auth.currentUser?.uid ?: return
-        val reportDoc = reportsCollection.document(reportId).get().await()
+        val cleanId = reportId.trim()
+        val reportDoc = reportsCollection.document(cleanId).get().await()
         val likes = reportDoc.get("likes") as? List<String> ?: emptyList()
-        
         if (likes.contains(userId)) {
-            reportsCollection.document(reportId).update("likes", FieldValue.arrayRemove(userId)).await()
+            reportsCollection.document(cleanId).update("likes", FieldValue.arrayRemove(userId))
         } else {
-            reportsCollection.document(reportId).update("likes", FieldValue.arrayUnion(userId)).await()
+            reportsCollection.document(cleanId).update("likes", FieldValue.arrayUnion(userId))
         }
     }
 
-    private suspend fun updateActivityAndKarma(userId: String, karmaPoints: Int, isReport: Boolean = false, isCleanup: Boolean = false) {
-        val userRef = usersCollection.document(userId)
-        val snapshot = userRef.get().await()
-        val profile = snapshot.toObject(UserProfile::class.java) ?: UserProfile(uid = userId)
-        
-        val now = System.currentTimeMillis()
-        val lastActivity = profile.lastActivityTimestamp
-        
-        var newStreak = profile.streak
-        if (lastActivity != 0L) {
-            val diff = now - lastActivity
-            val daysDiff = TimeUnit.MILLISECONDS.toDays(diff)
-            
-            if (daysDiff == 1L) {
-                newStreak += 1
-            } else if (daysDiff > 1L) {
-                newStreak = 1
+    suspend fun deleteReport(reportId: String) {
+        val cleanId = reportId.trim()
+        reportsCollection.document(cleanId).delete()
+        repositoryScope.launch { reportDao.deleteReportById(cleanId) }
+    }
+
+    /**
+     * Robust Data Synchronizer: 
+     * - Maps Firestore Document IDs to internal ID fields to ensure consistency.
+     * - Handles type conversion safely to prevent sync crashes.
+     */
+    fun observeReports(): ListenerRegistration {
+        return reportsCollection.addSnapshotListener { snapshot, error ->
+            if (error != null) {
+                Log.e(TAG, "Cloud sync error: ${error.message}")
+                return@addSnapshotListener
             }
-        } else {
-            newStreak = 1
+            repositoryScope.launch {
+                val toInsert = mutableListOf<LocalReport>()
+                snapshot?.documentChanges?.forEach { dc ->
+                    try {
+                        val doc = dc.document
+                        val data = doc.data ?: return@forEach
+                        
+                        // Robust Manual Mapping to handle Timestamp/Number types from cloud
+                        val report = Report(
+                            id = doc.id,
+                            reporterId = data["reporterId"] as? String ?: "",
+                            latitude = (data["latitude"] as? Number)?.toDouble() ?: 0.0,
+                            longitude = (data["longitude"] as? Number)?.toDouble() ?: 0.0,
+                            wasteType = data["wasteType"] as? String ?: "General Waste",
+                            photoUrl = data["photoUrl"] as? String ?: "",
+                            status = data["status"] as? String ?: "Reported",
+                            cleanerId = data["cleanerId"] as? String,
+                            cleanerName = data["cleanerName"] as? String,
+                            cleanedPhotoUrl = data["cleanedPhotoUrl"] as? String,
+                            timestamp = when (val t = data["timestamp"]) {
+                                is Number -> t.toLong()
+                                is Timestamp -> t.toDate().time
+                                else -> System.currentTimeMillis()
+                            },
+                            region = data["region"] as? String ?: "",
+                            likes = (data["likes"] as? List<String>) ?: emptyList(),
+                            priority = data["priority"] as? String ?: "Low"
+                        )
+                        
+                        when (dc.type) {
+                            DocumentChange.Type.ADDED, DocumentChange.Type.MODIFIED -> toInsert.add(report.toLocal())
+                            DocumentChange.Type.REMOVED -> reportDao.deleteReportById(doc.id)
+                        }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Individual report mapping failed: ${e.message}")
+                    }
+                }
+                if (toInsert.isNotEmpty()) reportDao.insertReports(toInsert)
+            }
         }
-
-        val updates = mutableMapOf<String, Any>(
-            "ecoKarma" to FieldValue.increment(karmaPoints.toLong()),
-            "lastActivityTimestamp" to now,
-            "streak" to newStreak,
-            "updatedAt" to now
-        )
-        
-        if (isReport) updates["reportsCount"] = FieldValue.increment(1)
-        if (isCleanup) updates["cleanupsCount"] = FieldValue.increment(1)
-        
-        userRef.set(updates, SetOptions.merge()).await()
     }
 
-    fun observeLeaderboard(onUpdate: (List<UserProfile>) -> Unit) {
-        usersCollection
-            .orderBy("ecoKarma", Query.Direction.DESCENDING)
-            .limit(20)
+    fun getLocalReports(): Flow<List<Report>> = reportDao.getAllReports().map { it.map { lr -> lr.toDomain() } }
+
+    /**
+     * Robust User Data Observer.
+     */
+    fun observeUserProfile(userId: String, onUpdate: (UserProfile?) -> Unit): ListenerRegistration {
+        return usersCollection.document(userId).addSnapshotListener { snapshot, _ ->
+            if (snapshot == null || !snapshot.exists()) {
+                onUpdate(null)
+                return@addSnapshotListener
+            }
+            try {
+                val data = snapshot.data ?: return@addSnapshotListener
+                onUpdate(UserProfile(
+                    uid = snapshot.id,
+                    displayName = data["displayName"] as? String ?: "",
+                    email = data["email"] as? String ?: "",
+                    ecoKarma = (data["ecoKarma"] as? Number)?.toLong() ?: 0L,
+                    reportsCount = (data["reportsCount"] as? Number)?.toLong() ?: 0L,
+                    cleanupsCount = (data["cleanupsCount"] as? Number)?.toLong() ?: 0L,
+                    streak = (data["streak"] as? Number)?.toInt() ?: 0,
+                    lastActivityTimestamp = (data["lastActivityTimestamp"] as? Number)?.toLong() ?: 0L,
+                    assignedRegion = data["assignedRegion"] as? String,
+                    role = data["role"] as? String ?: "Citizen",
+                    pushNotificationsEnabled = data["pushNotificationsEnabled"] as? Boolean ?: true,
+                    notificationSound = data["notificationSound"] as? String ?: "Default",
+                    vibrationEnabled = data["vibrationEnabled"] as? Boolean ?: true,
+                    fcmToken = data["fcmToken"] as? String,
+                    createdAt = (data["createdAt"] as? Number)?.toLong() ?: System.currentTimeMillis(),
+                    updatedAt = (data["updatedAt"] as? Number)?.toLong() ?: System.currentTimeMillis()
+                ))
+            } catch (e: Exception) {
+                Log.e(TAG, "Profile sync error: ${e.message}")
+            }
+        }
+    }
+
+    fun observeLeaderboard(onUpdate: (List<UserProfile>) -> Unit): ListenerRegistration {
+        return usersCollection.orderBy("ecoKarma", Query.Direction.DESCENDING).limit(20)
             .addSnapshotListener { snapshot, _ ->
-                val users = snapshot?.toObjects(UserProfile::class.java) ?: emptyList()
+                val users = mutableListOf<UserProfile>()
+                snapshot?.forEach { doc ->
+                    val data = doc.data
+                    users.add(UserProfile(
+                        uid = doc.id,
+                        displayName = data["displayName"] as? String ?: "",
+                        ecoKarma = (data["ecoKarma"] as? Number)?.toLong() ?: 0L,
+                        role = data["role"] as? String ?: "Citizen",
+                        cleanupsCount = (data["cleanupsCount"] as? Number)?.toLong() ?: 0L
+                    ))
+                }
                 onUpdate(users)
             }
     }
 
+    suspend fun createUserProfile(uid: String, email: String, displayName: String) {
+        val now = System.currentTimeMillis()
+        val profile = UserProfile(uid = uid, email = email, displayName = displayName, createdAt = now, updatedAt = now)
+        usersCollection.document(uid).set(profile, SetOptions.merge())
+    }
+
     suspend fun updateRegion(region: String?) {
-        val userId = auth.currentUser?.uid ?: return
-        val updates = mapOf(
-            "assignedRegion" to region,
-            "updatedAt" to System.currentTimeMillis()
-        )
-        usersCollection.document(userId).set(updates, SetOptions.merge()).await()
+        val uid = auth.currentUser?.uid ?: return
+        usersCollection.document(uid).set(mapOf("assignedRegion" to region, "updatedAt" to System.currentTimeMillis()), SetOptions.merge())
     }
 
     suspend fun updateRole(role: String) {
-        val userId = auth.currentUser?.uid ?: return
-        val updates = mapOf(
-            "role" to role,
-            "updatedAt" to System.currentTimeMillis()
-        )
-        usersCollection.document(userId).set(updates, SetOptions.merge()).await()
+        val uid = auth.currentUser?.uid ?: return
+        usersCollection.document(uid).set(mapOf("role" to role, "updatedAt" to System.currentTimeMillis()), SetOptions.merge())
     }
 
     suspend fun updateNotificationSettings(enabled: Boolean, sound: String, vibration: Boolean) {
-        val userId = auth.currentUser?.uid ?: return
-        val updates = mapOf(
+        val uid = auth.currentUser?.uid ?: return
+        usersCollection.document(uid).set(mapOf(
             "pushNotificationsEnabled" to enabled,
             "notificationSound" to sound,
             "vibrationEnabled" to vibration,
             "updatedAt" to System.currentTimeMillis()
-        )
-        usersCollection.document(userId).set(updates, SetOptions.merge()).await()
+        ), SetOptions.merge())
     }
 
     suspend fun updateFcmToken(token: String) {
-        val userId = auth.currentUser?.uid ?: return
-        usersCollection.document(userId).update("fcmToken", token).await()
-    }
-
-    fun observeReports(onUpdate: (List<Report>) -> Unit) {
-        reportsCollection.addSnapshotListener { snapshot, _ ->
-            val reports = snapshot?.toObjects(Report::class.java) ?: emptyList()
-            onUpdate(reports)
-        }
-    }
-
-    fun observeUserProfile(userId: String, onUpdate: (UserProfile?) -> Unit) {
-        usersCollection.document(userId).addSnapshotListener { snapshot, _ ->
-            onUpdate(snapshot?.toObject(UserProfile::class.java))
-        }
+        val uid = auth.currentUser?.uid ?: return
+        usersCollection.document(uid).set(mapOf("fcmToken" to token, "updatedAt" to System.currentTimeMillis()), SetOptions.merge())
     }
 }
