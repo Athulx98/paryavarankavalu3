@@ -82,22 +82,18 @@ fun SplashScreen(onTimeout: () -> Unit) {
             verticalArrangement = Arrangement.Center
         ) {
             // LOGO SECTION
-            Surface(
+            Box(
                 modifier = Modifier
-                    .size(100.dp)
+                    .size(120.dp)
                     .scale(scale),
-                shape = CircleShape,
-                color = Color.White,
-                shadowElevation = 8.dp
+                contentAlignment = Alignment.Center
             ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        imageVector = Icons.Default.Eco,
-                        contentDescription = "App Logo",
-                        tint = leafGreen,
-                        modifier = Modifier.size(60.dp)
-                    )
-                }
+                Image(
+                    painter = painterResource(id = R.drawable.app_logo),
+                    contentDescription = "App Logo",
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Fit
+                )
             }
 
             Spacer(modifier = Modifier.height(24.dp))

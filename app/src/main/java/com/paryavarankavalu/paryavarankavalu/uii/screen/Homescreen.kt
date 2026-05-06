@@ -268,6 +268,12 @@ fun HomeHeader(profile: UserProfile?) {
         verticalAlignment = Alignment.CenterVertically
     ) {
         Column {
+            androidx.compose.foundation.Image(
+                painter = androidx.compose.ui.res.painterResource(id = com.paryavarankavalu.paryavarankavalu.R.drawable.app_logo),
+                contentDescription = "Logo",
+                modifier = Modifier.size(40.dp)
+            )
+            Spacer(modifier = Modifier.height(12.dp))
             Text(
                 text = "Hi, ${profile?.displayName?.split(" ")?.firstOrNull() ?: "Alex"}",
                 fontWeight = FontWeight.Black,
