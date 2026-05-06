@@ -35,9 +35,16 @@ fun AuthScreen(navController: NavController, viewModel: MainViewModel) {
         modifier = Modifier.fillMaxSize().background(Color.White)
     ) {
         Box(modifier = Modifier.fillMaxWidth().height(300.dp).background(GreenPrimary)) {
-            Column(modifier = Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.Bottom) {
-                Text(text = "Welcome, Eco Spot", color = Color.White, fontSize = 32.sp, fontWeight = FontWeight.Black)
-                Text(text = "Let's make our Home\nbetter together.", color = Color.White.copy(alpha = 0.8f), fontSize = 14.sp, lineHeight = 20.sp)
+            Column(modifier = Modifier.fillMaxSize().padding(24.dp)) {
+                Spacer(modifier = Modifier.height(48.dp))
+                androidx.compose.foundation.Image(
+                    painter = androidx.compose.ui.res.painterResource(id = com.paryavarankavalu.paryavarankavalu.R.drawable.app_logo),
+                    contentDescription = "Logo",
+                    modifier = Modifier.size(80.dp)
+                )
+                Spacer(modifier = Modifier.weight(1f))
+                Text(text = "Welcome to\nParyavaran Kavalu", color = Color.White, fontSize = 32.sp, fontWeight = FontWeight.Black, lineHeight = 36.sp)
+                Text(text = "Protecting our environment, together.", color = Color.White.copy(alpha = 0.8f), fontSize = 14.sp, lineHeight = 20.sp)
             }
         }
 
