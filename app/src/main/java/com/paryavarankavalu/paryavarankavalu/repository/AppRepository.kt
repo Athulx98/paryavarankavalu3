@@ -104,7 +104,13 @@ class AppRepository(private val reportDao: ReportDao) {
      * Finalizes cleanup with separate prioritized writes and firm timeouts.
      * Guaranteed to finish or throw a catchable error (no hangs).
      */
-    suspend fun completeCleanup(reportId: String, cleanedPhotoUrl: String, aiCleanStatus: String? = null) = withContext(Dispatchers.IO) {
+    suspend fun completeCleanup(
+        reportId: String,
+        cleanedPhotoUrl: String,
+        aiCleanStatus: String? = null,
+        cleanupScore: Float? = null,
+        cleanupVerified: Boolean? = null
+    ) = withContext(Dispatchers.IO) {
         val userId = auth.currentUser?.uid ?: throw Exception("User not authenticated")
         val cleanId = reportId.trim()
         val now = System.currentTimeMillis()
@@ -119,6 +125,8 @@ class AppRepository(private val reportDao: ReportDao) {
                 "cleanedPhotoUrl" to cleanedPhotoUrl,
                 "aiCleanStatus" to aiCleanStatus,
                 "aiCleanupResult" to aiCleanStatus, // Mapping status to result for consistency
+                "cleanupScore" to cleanupScore,
+                "cleanupVerified" to cleanupVerified,
                 "timestamp" to now
             ).filterValues { it != null }, SetOptions.merge())
             Log.d(TAG, "Cloud task status updated.")
@@ -201,10 +209,15 @@ class AppRepository(private val reportDao: ReportDao) {
                             region = data["region"] as? String ?: "",
                             likes = (data["likes"] as? List<String>) ?: emptyList(),
                             aiSuggestedCategory = data["aiSuggestedCategory"] as? String,
+                            aiCategory = data["aiCategory"] as? String,
+                            confidence = (data["confidence"] as? Number)?.toFloat(),
+                            disposalBin = data["disposalBin"] as? String,
                             afterImageUri = data["cleanedPhotoUrl"] as? String,
                             aiCleanStatus = data["aiCleanStatus"] as? String,
                             beforeImageUri = data["beforeImageUri"] as? String,
                             aiCleanupResult = data["aiCleanupResult"] as? String,
+                            cleanupScore = (data["cleanupScore"] as? Number)?.toFloat(),
+                            cleanupVerified = data["cleanupVerified"] as? Boolean,
                             beforeDetectedLabels = data["beforeDetectedLabels"] as? List<String>,
                             afterDetectedLabels = data["afterDetectedLabels"] as? List<String>,
                             assignedTo = data["assignedTo"] as? String,

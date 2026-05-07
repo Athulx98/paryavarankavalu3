@@ -1,78 +1,91 @@
 package com.paryavarankavalu.paryavarankavalu.ai
 
+import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.util.Base64
+import android.util.Log
 import com.google.ai.client.generativeai.GenerativeModel
 import com.google.ai.client.generativeai.type.content
-import com.google.mlkit.vision.common.InputImage
-import com.google.mlkit.vision.objects.ObjectDetection
-import com.google.mlkit.vision.objects.defaults.ObjectDetectorOptions
 import com.paryavarankavalu.paryavarankavalu.BuildConfig
-import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
+import java.net.HttpURLConnection
+import java.net.URL
 
-/**
- * Helper class for verifying whether an area has been cleaned.
- * Uses a hybrid approach:
- * 1. Gemini 1.5 Flash for high-accuracy visual comparison (if API key is available).
- * 2. ML Kit Object Detection as an offline fallback.
- */
 object CleanupVerificationHelper {
+    private const val TAG = "CleanupVerify"
 
-    private val options = ObjectDetectorOptions.Builder()
-        .setDetectorMode(ObjectDetectorOptions.SINGLE_IMAGE_MODE)
-        .enableMultipleObjects()
-        .enableClassification()
-        .build()
-
-    private val objectDetector = ObjectDetection.getClient(options)
-
-    /**
-     * Verifies if the area in the afterBitmap is clean.
-     * Can optionally download a 'before' image from a URL for comparison.
-     */
-    suspend fun verifyCleaningWithUrl(beforeImageUrl: String?, afterBitmap: Bitmap): String {
-        return try {
-            val beforeBitmap = if (!beforeImageUrl.isNullOrEmpty()) {
-                downloadBitmap(beforeImageUrl)
-            } else {
-                null
-            }
-            verifyCleaning(beforeBitmap, afterBitmap)
-        } catch (e: Exception) {
-            android.util.Log.e("CleanupVerify", "Url download failed: ${e.message}")
-            verifyCleaning(null, afterBitmap)
-        }
+    suspend fun verifyCleaningResultWithUrl(
+        context: Context,
+        beforeImageUrl: String?,
+        afterBitmap: Bitmap
+    ): CleanupResult {
+        val beforeBitmap = loadBeforeBitmap(beforeImageUrl)
+        return verifyCleaningResult(context, beforeBitmap, afterBitmap)
     }
 
-    private suspend fun downloadBitmap(url: String): Bitmap? = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+    suspend fun verifyCleaningResult(
+        context: Context,
+        beforeBitmap: Bitmap?,
+        afterBitmap: Bitmap
+    ): CleanupResult {
+        CleanupVerifier.verifyWithTflite(context, beforeBitmap, afterBitmap)?.let {
+            Log.d(TAG, "TFLite cleanup result: $it")
+            return it
+        }
+        geminiCleanupResult(beforeBitmap, afterBitmap)?.let {
+            Log.d(TAG, "Gemini cleanup fallback result: $it")
+            return it
+        }
+        return CleanupVerifier.verifyWithMlKit(beforeBitmap, afterBitmap)
+    }
+
+    /**
+     * Backward-compatible API used by older call sites. It preserves the old
+     * return values while still benefiting from Gemini and ML Kit fallbacks.
+     */
+    suspend fun verifyCleaningWithUrl(beforeImageUrl: String?, afterBitmap: Bitmap): String {
+        val beforeBitmap = loadBeforeBitmap(beforeImageUrl)
+        return verifyCleaning(beforeBitmap, afterBitmap)
+    }
+
+    suspend fun verifyCleaning(beforeBitmap: Bitmap?, afterBitmap: Bitmap): String {
+        return geminiCleanupResult(beforeBitmap, afterBitmap)?.status
+            ?: CleanupVerifier.verifyWithMlKit(beforeBitmap, afterBitmap).status
+    }
+
+    private suspend fun loadBeforeBitmap(urlOrDataUri: String?): Bitmap? = withContext(Dispatchers.IO) {
+        if (urlOrDataUri.isNullOrBlank()) return@withContext null
         try {
-            val connection = java.net.URL(url).openConnection() as java.net.HttpURLConnection
+            if (urlOrDataUri.startsWith("data:image", ignoreCase = true)) {
+                val base64 = urlOrDataUri.substringAfter(",", missingDelimiterValue = "")
+                val bytes = Base64.decode(base64, Base64.DEFAULT)
+                return@withContext BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+            }
+
+            val connection = URL(urlOrDataUri).openConnection() as HttpURLConnection
+            connection.connectTimeout = 8000
+            connection.readTimeout = 8000
             connection.doInput = true
-            connection.connect()
-            val input = connection.inputStream
-            android.graphics.BitmapFactory.decodeStream(input)
+            connection.inputStream.use { BitmapFactory.decodeStream(it) }
         } catch (e: Exception) {
+            Log.w(TAG, "Before image load failed: ${e.message}")
             null
         }
     }
 
-    /**
-     * Verifies if the area in the afterBitmap is clean.
-     * If beforeBitmap is provided, it performs a comparison.
-     */
-    suspend fun verifyCleaning(beforeBitmap: Bitmap?, afterBitmap: Bitmap): String {
-        return try {
-            val apiKey = BuildConfig.GEMINI_API_KEY
-            android.util.Log.d("CleanupVerify", "Attempting AI verification. Key present: ${apiKey.isNotEmpty()}")
-            
-            if (apiKey.isEmpty() || apiKey == "null") {
-                return fallbackToMlKit(beforeBitmap, afterBitmap)
-            }
+    private suspend fun geminiCleanupResult(beforeBitmap: Bitmap?, afterBitmap: Bitmap): CleanupResult? {
+        val apiKey = BuildConfig.GEMINI_API_KEY
+        if (apiKey.isBlank() || apiKey == "null") return null
 
-            val generativeModel = GenerativeModel(
+        return try {
+            val model = GenerativeModel(
                 modelName = "gemini-1.5-flash",
                 apiKey = apiKey,
                 systemInstruction = content {
-                    text("You are a waste cleanup auditor. Examine the before/after images and determine if the cleanup was successful. Return ONLY 'Cleaned' or 'Not Cleaned'.")
+                    text("You are a strict waste cleanup auditor. Estimate visible waste before and after cleanup.")
                 },
                 safetySettings = listOf(
                     com.google.ai.client.generativeai.type.SafetySetting(com.google.ai.client.generativeai.type.HarmCategory.HARASSMENT, com.google.ai.client.generativeai.type.BlockThreshold.NONE),
@@ -82,41 +95,58 @@ object CleanupVerificationHelper {
                 )
             )
 
-            val response = generativeModel.generateContent(
-                content {
-                    if (beforeBitmap != null) image(beforeBitmap)
-                    image(afterBitmap)
-                    text("Compare these images. Is the area now clean?")
-                }
-            )
-
-            val result = response.text?.trim()?.replace("*", "") ?: "Not Cleaned"
-            android.util.Log.d("CleanupVerify", "Gemini Result: $result")
-            
-            if (result.contains("Cleaned", ignoreCase = true) && !result.contains("Not", ignoreCase = true)) {
-                "Cleaned"
-            } else if (result.contains("Not Cleaned", ignoreCase = true)) {
-                "Not Cleaned"
-            } else {
-                "Cleaned" // Default to Cleaned if result is ambiguous
+            val response = withTimeoutOrNull(14000L) {
+                model.generateContent(
+                    content {
+                        if (beforeBitmap != null) image(beforeBitmap)
+                        image(afterBitmap)
+                        text(
+                            """
+                            Return JSON only:
+                            {"beforeWasteLevel":0-100,"afterWasteLevel":0-100,"cleanupVerified":true|false}
+                            If no before image is provided, estimate only the after image and set beforeWasteLevel to 0.
+                            """.trimIndent()
+                        )
+                    }
+                )
             }
+
+            parseGeminiCleanup(response?.text)
         } catch (e: Exception) {
-            android.util.Log.e("CleanupVerify", "AI Error: ${e.message}")
-            fallbackToMlKit(beforeBitmap, afterBitmap)
+            Log.w(TAG, "Gemini cleanup fallback failed: ${e.message}")
+            null
         }
     }
 
-    private suspend fun fallbackToMlKit(beforeBitmap: Bitmap?, afterBitmap: Bitmap): String {
-        return try {
-            val image = InputImage.fromBitmap(afterBitmap, 0)
-            val labels = objectDetector.process(image).await()
-            val labelPairs = labels.flatMap { obj -> obj.labels.map { it.text to it.confidence } }
-            // Highly sensitive threshold for local cleanup verification
-            val hasWaste = LabelMappingUtils.containsWaste(labelPairs, minConfidence = 0.1f)
+    private fun parseGeminiCleanup(text: String?): CleanupResult? {
+        if (text.isNullOrBlank()) return null
+        val before = Regex("\"beforeWasteLevel\"\\s*:\\s*(\\d+(?:\\.\\d+)?)")
+            .find(text)?.groupValues?.getOrNull(1)?.toFloatOrNull()
+        val after = Regex("\"afterWasteLevel\"\\s*:\\s*(\\d+(?:\\.\\d+)?)")
+            .find(text)?.groupValues?.getOrNull(1)?.toFloatOrNull()
+        val verified = Regex("\"cleanupVerified\"\\s*:\\s*(true|false)", RegexOption.IGNORE_CASE)
+            .find(text)?.groupValues?.getOrNull(1)?.equals("true", ignoreCase = true)
 
-            if (!hasWaste) "Cleaned" else "Not Cleaned"
-        } catch (e: Exception) {
-            "Not Cleaned"
+        if (after != null) {
+            val result = if (before != null && before > 0f) {
+                CleanupResult.fromLevels(before / 100f, after / 100f, source = "Gemini")
+            } else {
+                CleanupResult.afterOnly(after / 100f, source = "Gemini")
+            }
+            return if (verified == null) {
+                result
+            } else {
+                result.copy(
+                    cleanupVerified = verified,
+                    status = if (verified) "Cleaned" else "Not Cleaned"
+                )
+            }
+        }
+
+        return when {
+            text.contains("not cleaned", ignoreCase = true) -> CleanupResult.afterOnly(0.75f, "Gemini")
+            text.contains("cleaned", ignoreCase = true) -> CleanupResult.afterOnly(0.12f, "Gemini")
+            else -> null
         }
     }
 }

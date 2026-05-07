@@ -1,7 +1,7 @@
 package com.paryavarankavalu.paryavarankavalu.ai
 
 /**
- * Utility object for converting raw ML Kit image labels into waste categories.
+ * Utility object for converting raw model labels into waste categories.
  *
  * This is a pure mapping utility — it does NOT call ML Kit or any AI service.
  * Feed it the raw label strings that ML Kit returns and it will tell you:
@@ -31,15 +31,18 @@ object LabelMappingUtils {
             "Metal", "Can", "Aluminium", "Iron", "Steel",
             "Scrap", "Foil", "Tin", "Copper", "Rust", "Metallic"
         ),
+        "Paper" to listOf(
+            "Paper", "Cardboard", "Carton", "Box", "Newspaper", "Book",
+            "Magazine", "Notebook", "Tissue", "Napkin"
+        ),
+        "E-Waste" to listOf(
+            "Electronic", "Computer", "Laptop", "Phone", "Screen", "Cable",
+            "Charger", "Circuit", "Keyboard", "Mouse", "Appliance", "E-Waste"
+        ),
         "Hazardous" to listOf(
             "Battery", "Electronic", "Medical", "Chemical", "Paint",
-            "Pill", "Medicine", "Computer", "Laptop", "Phone", "Screen",
-            "Cable", "Hazardous", "Toxic", "Oil", "Solvent"
-        ),
-        "Mixed Waste" to listOf(
-            "Garbage", "Waste", "Trash", "Debris", "Dump", "Litter", "Junk",
-            "Rubble", "Carton", "Paper", "Cardboard", "Box", "Pack",
-            "Clothing", "Shoe", "Fabric", "Textile", "Diaper"
+            "Pill", "Medicine", "Hazardous", "Toxic", "Oil", "Solvent",
+            "Clinical", "Sanitary", "Pesticide"
         )
     )
 
@@ -75,6 +78,10 @@ object LabelMappingUtils {
      * Returns "Not detected" if nothing matches.
      */
     fun bestCategory(labels: List<Pair<String, Float>>, minConfidence: Float = 0.05f): String {
+        return bestCategoryWithConfidence(labels, minConfidence)?.category ?: "Not detected"
+    }
+
+    fun bestCategoryWithConfidence(labels: List<Pair<String, Float>>, minConfidence: Float = 0.05f): PredictionResult? {
         val scores = mutableMapOf<String, Float>()
 
         for ((text, confidence) in labels) {
@@ -86,7 +93,13 @@ object LabelMappingUtils {
             }
         }
 
-        return scores.maxByOrNull { it.value }?.key ?: "Not detected"
+        val best = scores.maxByOrNull { it.value } ?: return null
+        val normalized = normalizeWasteCategory(best.key)
+        return PredictionResult(
+            category = normalized,
+            confidence = best.value.coerceIn(0f, 1f),
+            recommendedBin = recommendedBinFor(normalized)
+        )
     }
 
     /**
@@ -118,4 +131,35 @@ object LabelMappingUtils {
 
     /** Returns all keywords for a given category, or empty list if unknown. */
     fun keywordsFor(category: String): List<String> = categoryMap[category] ?: emptyList()
+
+    fun normalizeWasteCategory(rawLabel: String): String {
+        val cleaned = rawLabel.trim()
+            .replace("_", " ")
+            .replace("-", " ")
+            .replace(Regex("\\s+"), " ")
+
+        return when {
+            cleaned.equals("bio waste", true) || cleaned.equals("biowaste", true) -> "Organic"
+            cleaned.equals("organic waste", true) -> "Organic"
+            cleaned.equals("plastic waste", true) -> "Plastic"
+            cleaned.equals("glass waste", true) -> "Glass"
+            cleaned.equals("metal waste", true) -> "Metal"
+            cleaned.equals("paper waste", true) -> "Paper"
+            cleaned.equals("electronic waste", true) || cleaned.equals("e waste", true) -> "E-Waste"
+            cleaned.equals("hazardous waste", true) -> "Hazardous"
+            allCategories().any { it.equals(cleaned, true) } -> allCategories().first { it.equals(cleaned, true) }
+            else -> mapLabelToCategory(cleaned) ?: PredictionResult.NOT_DETECTED
+        }
+    }
+
+    fun recommendedBinFor(category: String): String = when (normalizeWasteCategory(category)) {
+        "Plastic" -> "Blue Bin"
+        "Organic" -> "Green Bin"
+        "Hazardous" -> "Red Bin"
+        "E-Waste" -> "Black Bin"
+        "Glass" -> "White Bin"
+        "Metal" -> "Yellow Bin"
+        "Paper" -> "Blue Bin"
+        else -> "Manual Review"
+    }
 }

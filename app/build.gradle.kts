@@ -67,6 +67,9 @@ android {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
     }
+    androidResources {
+        noCompress += "tflite"
+    }
     testOptions {
         unitTests {
             isIncludeAndroidResources = true
@@ -128,6 +131,11 @@ dependencies {
     // ML Kit
     implementation(libs.mlkit.image.labeling)
     implementation(libs.mlkit.objectdetection)
+
+    // Offline TensorFlow Lite waste classifier
+    implementation("org.tensorflow:tensorflow-lite:2.13.0")
+    implementation("org.tensorflow:tensorflow-lite-support:0.4.4")
+    implementation("org.tensorflow:tensorflow-lite-task-vision:0.4.4")
 
     testImplementation(libs.junit)
     testImplementation(libs.robolectric)

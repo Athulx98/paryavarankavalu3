@@ -205,7 +205,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
      * 2. Added logging to track progress.
      * 3. Prevents double-clicks.
      */
-    fun completeCleanupWithImage(reportId: String, bitmap: Bitmap, aiCleanStatus: String? = null, onSuccess: () -> Unit, onError: (String) -> Unit) {
+    fun completeCleanupWithImage(
+        reportId: String,
+        bitmap: Bitmap,
+        aiCleanStatus: String? = null,
+        cleanupScore: Float? = null,
+        cleanupVerified: Boolean? = null,
+        onSuccess: () -> Unit,
+        onError: (String) -> Unit
+    ) {
         viewModelScope.launch {
             if (_isLoading.value) return@launch
             _isLoading.value = true
@@ -220,7 +228,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 
                 // Final document sync
                 withTimeout(20000L) {
-                    repository.completeCleanup(reportId, url, aiCleanStatus)
+                    repository.completeCleanup(reportId, url, aiCleanStatus, cleanupScore, cleanupVerified)
                 }
                 
                 Log.d(TAG, "Cleanup completed successfully.")
