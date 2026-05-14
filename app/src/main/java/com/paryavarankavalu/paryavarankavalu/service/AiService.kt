@@ -1,13 +1,21 @@
 package com.paryavarankavalu.paryavarankavalu.service
 
+import android.content.Context
 import android.graphics.Bitmap
 import com.google.ai.client.generativeai.GenerativeModel
 import com.google.ai.client.generativeai.type.content
+import com.paryavarankavalu.paryavarankavalu.ai.LabelMappingUtils
+import com.paryavarankavalu.paryavarankavalu.ai.WasteDetectionHelper
 import kotlinx.coroutines.withTimeoutOrNull
 
-class AiService(private val apiKey: String) {
+class AiService(private val apiKey: String, private val context: Context? = null) {
     suspend fun analyzeWaste(imageBitmap: Bitmap, isCleanup: Boolean = false): String {
         try {
+            if (!isCleanup && context != null) {
+                val prediction = WasteDetectionHelper.classifyWaste(context, imageBitmap)
+                return prediction.category.takeIf { prediction.isDetected } ?: "General Waste"
+            }
+
             val generativeModel = GenerativeModel(
                 modelName = "gemini-1.5-flash",
                 apiKey = apiKey
@@ -60,10 +68,10 @@ class AiService(private val apiKey: String) {
     }
 
     fun determinePriority(wasteType: String): String {
-        return when (wasteType) {
-            "Hazardous Waste", "Medical Waste" -> "High"
-            "Electronic Waste", "Bio Waste" -> "Medium"
-            "General Waste", "Plastic Waste" -> "Low"
+        return when (LabelMappingUtils.normalizeWasteCategory(wasteType)) {
+            "Hazardous" -> "High"
+            "E-Waste", "Organic" -> "Medium"
+            "Glass", "Metal" -> "Medium"
             else -> "Low"
         }
     }

@@ -1,0 +1,7 @@
+Plastic
+Glass
+Metal
+Paper
+Organic
+E-Waste
+Hazardous

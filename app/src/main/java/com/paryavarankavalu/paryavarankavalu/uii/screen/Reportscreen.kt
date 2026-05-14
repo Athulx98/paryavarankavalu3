@@ -2,6 +2,7 @@ package com.paryavarankavalu.paryavarankavalu.uii.screen
 
 import android.Manifest
 import android.content.Context
+import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.location.Geocoder
@@ -53,6 +54,9 @@ import com.google.android.gms.tasks.CancellationTokenSource
 import com.paryavarankavalu.paryavarankavalu.model.Report
 import com.paryavarankavalu.paryavarankavalu.ai.WasteDetectionHelper
 import com.paryavarankavalu.paryavarankavalu.ai.CleanupVerificationHelper
+import com.paryavarankavalu.paryavarankavalu.ai.LabelMappingUtils
+import com.paryavarankavalu.paryavarankavalu.ai.PredictionResult
+import com.paryavarankavalu.paryavarankavalu.ai.CleanupResult
 import com.paryavarankavalu.paryavarankavalu.service.AiService
 import com.paryavarankavalu.paryavarankavalu.ui.theme.*
 import com.paryavarankavalu.paryavarankavalu.viewmodel.MainViewModel
@@ -81,6 +85,8 @@ fun ReportScreen(
     var capturedBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var wasteType by remember { mutableStateOf(if (reportId == null) "General Waste" else "Needs More Cleaning") }
     var aiSuggestedCategory by remember { mutableStateOf<String?>(null) }
+    var aiPrediction by remember { mutableStateOf<PredictionResult?>(null) }
+    var cleanupResult by remember { mutableStateOf<CleanupResult?>(null) }
     var priority by remember { mutableStateOf("Low") }
     val isUploading by viewModel.isLoading.collectAsState()
     var userLocation by remember { mutableStateOf<Pair<Double, Double>?>(null) }
@@ -90,7 +96,7 @@ fun ReportScreen(
     val reports by viewModel.reports.collectAsState()
     val originalReport = remember(reportId, reports) { reports.find { it.id == reportId } }
     
-    val aiService = remember { AiService(BuildConfig.GEMINI_API_KEY) }
+    val aiService = remember(context) { AiService(BuildConfig.GEMINI_API_KEY, context) }
     val fusedLocationClient = remember { LocationServices.getFusedLocationProviderClient(context) }
 
     val galleryLauncher = rememberLauncherForActivityResult(
@@ -105,18 +111,21 @@ fun ReportScreen(
                     aiSuggestedCategory = "Analyzing..."
                     
                     if (isCleanupMode) {
-                        val status = withContext(Dispatchers.IO) {
-                            CleanupVerificationHelper.verifyCleaningWithUrl(originalReport?.photoUrl, bitmap)
+                        val result = withContext(Dispatchers.IO) {
+                            CleanupVerificationHelper.verifyCleaningResultWithUrl(context, originalReport?.photoUrl, bitmap)
                         }
-                        val uiStatus = if (status == "Cleaned") "Site Cleaned" else "Needs More Cleaning"
+                        cleanupResult = result
+                        val uiStatus = if (result.cleanupVerified) "Site Cleaned" else "Needs More Cleaning"
                         aiSuggestedCategory = uiStatus
                         wasteType = uiStatus
                     } else {
-                        val category = withContext(Dispatchers.IO) {
-                            WasteDetectionHelper.suggestWasteCategory(bitmap)
+                        val prediction = withContext(Dispatchers.IO) {
+                            WasteDetectionHelper.classifyWaste(context, bitmap)
                         }
+                        aiPrediction = prediction
+                        val category = prediction.category
                         aiSuggestedCategory = category
-                        if (category != "Not detected") {
+                        if (prediction.isDetected) {
                             wasteType = category
                             priority = aiService.determinePriority(category)
                         } else {
@@ -127,6 +136,7 @@ fun ReportScreen(
                 } catch (e: Exception) {
                     Log.e("ReportScreen", "AI Analysis failed", e)
                     aiSuggestedCategory = "Detection Failed"
+                    aiPrediction = PredictionResult.notDetected()
                     wasteType = if (isCleanupMode) "Needs More Cleaning" else "General Waste"
                 }
             }
@@ -137,19 +147,33 @@ fun ReportScreen(
         if (!locationPermissionState.status.isGranted) {
             locationPermissionState.launchPermissionRequest()
         } else {
-            fusedLocationClient.lastLocation.addOnSuccessListener { loc ->
-                loc?.let {
-                    if (userLocation == null) {
-                        userLocation = Pair(it.latitude, it.longitude)
-                        scope.launch { detectedRegion = getAreaName(context, it.latitude, it.longitude) }
+            val hasLocationPermission = ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.ACCESS_FINE_LOCATION
+            ) == PackageManager.PERMISSION_GRANTED
+
+            if (hasLocationPermission) {
+                try {
+                    fusedLocationClient.lastLocation.addOnSuccessListener { loc ->
+                        loc?.let {
+                            if (userLocation == null) {
+                                userLocation = Pair(it.latitude, it.longitude)
+                                scope.launch { detectedRegion = getAreaName(context, it.latitude, it.longitude) }
+                            }
+                        }
                     }
-                }
-            }
-            val cancellationTokenSource = CancellationTokenSource()
-            fusedLocationClient.getCurrentLocation(Priority.PRIORITY_HIGH_ACCURACY, cancellationTokenSource.token).addOnSuccessListener { location ->
-                location?.let { 
-                    userLocation = Pair(it.latitude, it.longitude)
-                    scope.launch { detectedRegion = getAreaName(context, it.latitude, it.longitude) }
+                    val cancellationTokenSource = CancellationTokenSource()
+                    fusedLocationClient.getCurrentLocation(
+                        Priority.PRIORITY_HIGH_ACCURACY,
+                        cancellationTokenSource.token
+                    ).addOnSuccessListener { location ->
+                        location?.let {
+                            userLocation = Pair(it.latitude, it.longitude)
+                            scope.launch { detectedRegion = getAreaName(context, it.latitude, it.longitude) }
+                        }
+                    }
+                } catch (e: SecurityException) {
+                    Log.w("ReportScreen", "Location permission was revoked before location lookup", e)
                 }
             }
         }
@@ -174,18 +198,21 @@ fun ReportScreen(
                             try {
                                 aiSuggestedCategory = "Analyzing..."
                                 if (isCleanupMode) {
-                                    val status = withContext(Dispatchers.IO) {
-                                        CleanupVerificationHelper.verifyCleaningWithUrl(originalReport?.photoUrl, bitmap)
+                                    val result = withContext(Dispatchers.IO) {
+                                        CleanupVerificationHelper.verifyCleaningResultWithUrl(context, originalReport?.photoUrl, bitmap)
                                     }
-                                    val uiStatus = if (status == "Cleaned") "Site Cleaned" else "Needs More Cleaning"
+                                    cleanupResult = result
+                                    val uiStatus = if (result.cleanupVerified) "Site Cleaned" else "Needs More Cleaning"
                                     aiSuggestedCategory = uiStatus
                                     wasteType = uiStatus
-                                } else {
-                                    val category = withContext(Dispatchers.IO) {
-                                        WasteDetectionHelper.suggestWasteCategory(bitmap)
+                                    } else {
+                                    val prediction = withContext(Dispatchers.IO) {
+                                        WasteDetectionHelper.classifyWaste(context, bitmap)
                                     }
+                                    aiPrediction = prediction
+                                    val category = prediction.category
                                     aiSuggestedCategory = category
-                                    if (category != "Not detected") {
+                                    if (prediction.isDetected) {
                                         wasteType = category
                                         priority = aiService.determinePriority(category)
                                     } else {
@@ -196,6 +223,7 @@ fun ReportScreen(
                             } catch (e: Exception) {
                                 Log.e("ReportScreen", "Camera AI Analysis failed", e)
                                 aiSuggestedCategory = "Detection Failed"
+                                aiPrediction = PredictionResult.notDetected()
                                 wasteType = if (isCleanupMode) "Needs More Cleaning" else "General Waste"
                             }
                         }
@@ -208,14 +236,20 @@ fun ReportScreen(
                     bitmap = capturedBitmap,
                     category = wasteType,
                     aiCategory = aiSuggestedCategory,
+                    prediction = aiPrediction,
+                    cleanupResult = cleanupResult,
                     isUploading = isUploading,
                     locationReady = userLocation != null,
                     regionName = detectedRegion,
                     isCleanupMode = isCleanupMode,
-                    onRetake = { step = 1; aiSuggestedCategory = null; wasteType = if (isCleanupMode) "Needs More Cleaning" else "General Waste"; priority = "Low" },
+                    onRetake = { step = 1; aiSuggestedCategory = null; aiPrediction = null; cleanupResult = null; wasteType = if (isCleanupMode) "Needs More Cleaning" else "General Waste"; priority = "Low" },
                     onCategoryChange = { newType -> 
                         wasteType = newType 
                         priority = aiService.determinePriority(newType)
+                        aiPrediction = aiPrediction?.copy(
+                            category = newType,
+                            recommendedBin = LabelMappingUtils.recommendedBinFor(newType)
+                        )
                     },
                     onSubmit = {
                         if (isCleanupMode) {
@@ -223,6 +257,8 @@ fun ReportScreen(
                                 reportId = reportId!!,
                                 bitmap = capturedBitmap!!,
                                 aiCleanStatus = aiSuggestedCategory,
+                                cleanupScore = cleanupResult?.cleanupScore,
+                                cleanupVerified = cleanupResult?.cleanupVerified,
                                 onSuccess = { step = 3 },
                                 onError = { msg -> Toast.makeText(context, "Action failed: $msg", Toast.LENGTH_SHORT).show() }
                             )
@@ -235,7 +271,10 @@ fun ReportScreen(
                                 longitude = userLocation?.second ?: 0.0,
                                 region = detectedRegion,
                                 status = "Reported",
-                                aiSuggestedCategory = if (!isCleanupMode) aiSuggestedCategory else null
+                                aiSuggestedCategory = if (!isCleanupMode) aiSuggestedCategory else null,
+                                aiCategory = aiPrediction?.category,
+                                confidence = aiPrediction?.confidence,
+                                disposalBin = aiPrediction?.recommendedBin
                             )
                             viewModel.submitReportWithImage(
                                 report = report,
@@ -337,6 +376,8 @@ fun AnalysisPreview(
     bitmap: Bitmap?,
     category: String,
     aiCategory: String?,
+    prediction: PredictionResult?,
+    cleanupResult: CleanupResult?,
     isUploading: Boolean,
     locationReady: Boolean,
     regionName: String,
@@ -346,7 +387,12 @@ fun AnalysisPreview(
     onSubmit: () -> Unit
 ) {
     var expanded by remember { mutableStateOf(false) }
-    val options = if (isCleanupMode) listOf("Site Cleaned", "Needs More Cleaning") else listOf("Plastic Waste", "Bio Waste", "Electronic Waste", "Hazardous Waste", "General Waste")
+    val options = if (isCleanupMode) {
+        listOf("Site Cleaned", "Needs More Cleaning")
+    } else {
+        listOf("Plastic", "Glass", "Metal", "Paper", "Organic", "E-Waste", "Hazardous", "General Waste")
+    }
+    val confidence = prediction?.confidence?.coerceIn(0f, 1f) ?: 0f
 
     Column(modifier = Modifier.fillMaxSize().padding(24.dp)) {
         Box(modifier = Modifier.weight(1f).fillMaxWidth().clip(RoundedCornerShape(32.dp))) {
@@ -368,8 +414,20 @@ fun AnalysisPreview(
 
         Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp), colors = CardDefaults.cardColors(containerColor = Sage50)) {
             Column(modifier = Modifier.padding(20.dp)) {
-                aiCategory?.let {
-                    Text("AI Suggested Category: $it", color = Forest900, fontSize = 14.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 8.dp))
+                if (aiCategory == "Analyzing...") {
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 12.dp)) {
+                        CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp, color = GreenPrimary)
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Text("Running offline AI classifier", color = Forest900, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                    }
+                } else if (isCleanupMode && cleanupResult != null) {
+                    CleanupVerificationCard(result = cleanupResult)
+                } else if (!isCleanupMode && prediction != null) {
+                    AiPredictionCard(prediction = prediction, confidence = confidence)
+                } else {
+                    aiCategory?.let {
+                        Text("AI Suggested Category: $it", color = Forest900, fontSize = 14.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 8.dp))
+                    }
                 }
                 Box {
                     Column {
@@ -409,6 +467,84 @@ fun AnalysisPreview(
                 else Text(if (isCleanupMode) "COMPLETE TASK" else "SUBMIT REPORT", fontWeight = FontWeight.Bold)
             }
         }
+    }
+}
+
+@Composable
+private fun CleanupVerificationCard(result: CleanupResult) {
+    Column(modifier = Modifier.fillMaxWidth().padding(bottom = 14.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Surface(
+                color = if (result.cleanupVerified) GreenPrimary else Color.Red,
+                shape = RoundedCornerShape(10.dp)
+            ) {
+                Text(
+                    text = if (result.cleanupVerified) "VERIFIED" else "RECHECK",
+                    color = Color.White,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                )
+            }
+            Text("${(result.cleanupScore * 100).toInt()}%", color = Forest900, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+        }
+        Spacer(modifier = Modifier.height(10.dp))
+        LinearProgressIndicator(
+            progress = { result.cleanupScore.coerceIn(0f, 1f) },
+            modifier = Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(8.dp)),
+            color = if (result.cleanupVerified) GreenPrimary else Color.Red,
+            trackColor = GreenLight
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            CleanupMetric("Before", result.beforeWasteLevel)
+            CleanupMetric("After", result.afterWasteLevel)
+            CleanupMetric("Improved", result.improvement)
+        }
+    }
+}
+
+@Composable
+private fun CleanupMetric(label: String, value: Float) {
+    Column(horizontalAlignment = Alignment.Start) {
+        Text(label, color = Sage400, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+        Text("${(value.coerceIn(0f, 1f) * 100).toInt()}%", color = Forest900, fontSize = 16.sp, fontWeight = FontWeight.Black)
+    }
+}
+
+@Composable
+private fun AiPredictionCard(prediction: PredictionResult, confidence: Float) {
+    Column(modifier = Modifier.fillMaxWidth().padding(bottom = 14.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Surface(color = GreenPrimary, shape = RoundedCornerShape(10.dp)) {
+                Text(
+                    text = prediction.category.uppercase(),
+                    color = Color.White,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                )
+            }
+            Text("${(confidence * 100).toInt()}%", color = Forest900, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+        }
+        Spacer(modifier = Modifier.height(10.dp))
+        LinearProgressIndicator(
+            progress = { confidence },
+            modifier = Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(8.dp)),
+            color = GreenPrimary,
+            trackColor = GreenLight
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+        Text("Recommended disposal", color = Sage400, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+        Text(prediction.recommendedBin, color = Forest900, fontSize = 18.sp, fontWeight = FontWeight.Black)
     }
 }
 
