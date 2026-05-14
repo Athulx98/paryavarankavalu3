@@ -109,6 +109,6 @@ class TFLiteWasteClassifier(context: Context) : Closeable {
 
     companion object {
         private const val TAG = "TFLiteWasteClassifier"
-        private const val MIN_CONFIDENCE = 0.35f
+        private const val MIN_CONFIDENCE = 0.20f
     }
 }

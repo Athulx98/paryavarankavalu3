@@ -7,6 +7,8 @@ The waste classifier expects:
 - input tensor: 1 x 224 x 224 x 3, FLOAT32, UINT8, or INT8
 - output tensor: 1 x 7
 - label order matching labels.txt
+- FLOAT32 input currently uses [0, 1] normalization. If you add a model
+  trained with [-1, 1] preprocessing, update ImagePreprocessor accordingly.
 
 The cleanup verifier accepts either:
 - image-level output: one waste-probability value
@@ -16,3 +18,7 @@ The cleanup verifier accepts either:
 Do not commit dummy model files. Invalid .tflite assets will make runtime
 initialization fail; the app catches that and falls back to Gemini and ML Kit
 without blocking reporting or cleanup.
+
+Current fallback behavior if these model files are absent:
+- waste classification skips TensorFlow Lite and tries Gemini, then ML Kit
+- cleanup verification skips TensorFlow Lite and uses ML Kit

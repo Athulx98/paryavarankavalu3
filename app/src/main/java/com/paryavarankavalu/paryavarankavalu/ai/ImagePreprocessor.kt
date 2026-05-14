@@ -8,6 +8,7 @@ import java.nio.ByteOrder
 object ImagePreprocessor {
     const val INPUT_SIZE = 224
     private const val CHANNELS = 3
+    private const val USE_ZERO_ONE_NORMALIZATION = true
 
     fun preprocess(bitmap: Bitmap, inputType: DataType): ByteBuffer {
         val resized = Bitmap.createScaledBitmap(bitmap, INPUT_SIZE, INPUT_SIZE, true)
@@ -34,9 +35,15 @@ object ImagePreprocessor {
                     buffer.put((b - 128).toByte())
                 }
                 else -> {
-                buffer.putFloat((r / 127.5f) - 1f)
-                buffer.putFloat((g / 127.5f) - 1f)
-                buffer.putFloat((b / 127.5f) - 1f)
+                    if (USE_ZERO_ONE_NORMALIZATION) {
+                        buffer.putFloat(r / 255f)
+                        buffer.putFloat(g / 255f)
+                        buffer.putFloat(b / 255f)
+                    } else {
+                        buffer.putFloat((r / 127.5f) - 1f)
+                        buffer.putFloat((g / 127.5f) - 1f)
+                        buffer.putFloat((b / 127.5f) - 1f)
+                    }
                 }
             }
         }

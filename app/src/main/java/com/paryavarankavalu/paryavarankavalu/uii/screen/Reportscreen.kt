@@ -2,6 +2,7 @@ package com.paryavarankavalu.paryavarankavalu.uii.screen
 
 import android.Manifest
 import android.content.Context
+import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.location.Geocoder
@@ -146,19 +147,33 @@ fun ReportScreen(
         if (!locationPermissionState.status.isGranted) {
             locationPermissionState.launchPermissionRequest()
         } else {
-            fusedLocationClient.lastLocation.addOnSuccessListener { loc ->
-                loc?.let {
-                    if (userLocation == null) {
-                        userLocation = Pair(it.latitude, it.longitude)
-                        scope.launch { detectedRegion = getAreaName(context, it.latitude, it.longitude) }
+            val hasLocationPermission = ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.ACCESS_FINE_LOCATION
+            ) == PackageManager.PERMISSION_GRANTED
+
+            if (hasLocationPermission) {
+                try {
+                    fusedLocationClient.lastLocation.addOnSuccessListener { loc ->
+                        loc?.let {
+                            if (userLocation == null) {
+                                userLocation = Pair(it.latitude, it.longitude)
+                                scope.launch { detectedRegion = getAreaName(context, it.latitude, it.longitude) }
+                            }
+                        }
                     }
-                }
-            }
-            val cancellationTokenSource = CancellationTokenSource()
-            fusedLocationClient.getCurrentLocation(Priority.PRIORITY_HIGH_ACCURACY, cancellationTokenSource.token).addOnSuccessListener { location ->
-                location?.let { 
-                    userLocation = Pair(it.latitude, it.longitude)
-                    scope.launch { detectedRegion = getAreaName(context, it.latitude, it.longitude) }
+                    val cancellationTokenSource = CancellationTokenSource()
+                    fusedLocationClient.getCurrentLocation(
+                        Priority.PRIORITY_HIGH_ACCURACY,
+                        cancellationTokenSource.token
+                    ).addOnSuccessListener { location ->
+                        location?.let {
+                            userLocation = Pair(it.latitude, it.longitude)
+                            scope.launch { detectedRegion = getAreaName(context, it.latitude, it.longitude) }
+                        }
+                    }
+                } catch (e: SecurityException) {
+                    Log.w("ReportScreen", "Location permission was revoked before location lookup", e)
                 }
             }
         }
